@@ -353,7 +353,7 @@ function ccChat() {
 				this.st.automation = d.automation && d.automation.ok
 					? 'automation.json terdeteksi — ' + d.automation.address
 					: ((d.automation && d.automation.error) || 'automation.json tidak ditemukan.');
-				this.loadTemplates();
+				this.loadTplList();
 				this.st.f = {
 					ai_provider: d.ai_provider || 'openai', ai_key: '', ai_model: d.ai_model || '', ai_baseurl: d.ai_baseurl || '',
 					openai_key: '', openai_model: d.openai_model || '', openai_prompt: d.openai_prompt || '',
@@ -379,7 +379,7 @@ function ccChat() {
 			this.st.saving = false;
 		},
 
-		async loadTemplates() {
+		async loadTplList() {
 			try {
 				const d = await ccApi('GET', '/settings/templates');
 				this.st.templates = d.templates || [];
@@ -392,7 +392,7 @@ function ccChat() {
 			try {
 				await ccPost('/settings/templates/rename', { path: t.path, name });
 				this.st.renaming = '';
-				await this.loadTemplates();
+				await this.loadTplList();
 			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
 		},
 		askConfirm(msg, cb) { this.st.confirm = msg; this.st.confirmCb = cb; this.$nextTick(() => this.icons()); },
@@ -405,7 +405,7 @@ function ccChat() {
 			this.askConfirm('Hapus template "' + t.name + '"? Tidak bisa dikembalikan.', async () => {
 				try {
 					await ccPost('/settings/templates/delete', { path: t.path });
-					await this.loadTemplates();
+					await this.loadTplList();
 				} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
 			});
 		},
