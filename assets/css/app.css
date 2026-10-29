@@ -511,3 +511,16 @@ body {
 .cc-radio { padding: .55rem 0; }
 .cc-ctl-act { margin-top: .8rem; }
 .cc-note { line-height: 1.5; }
+
+/* Perbaikan utama: tiap langkah wizard punya flex+gap sendiri
+   (sebelumnya gap cc-ctl-card tidak menjangkau isi dalam div x-show) */
+.cc-ctl-card > div[x-show] {
+	display: flex; flex-direction: column; gap: 1.5rem;
+}
+.cc-field + .cc-field { margin-top: 1.4rem; }
+.cc-note { display: block; margin-top: .45rem; }
+.cc-ctl-act {
+	padding-top: 1.2rem; margin-top: .6rem;
+	border-top: 1px solid var(--cc-border);
+	justify-content: space-between;
+}
