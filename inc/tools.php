@@ -82,7 +82,7 @@ class CC_Tools {
 			array( 'list_projects', 'Daftar proyek Studio Inspirasi yang ada.', $req( array(), array() ) ),
 			array( 'project_open', 'Buka proyek Studio Inspirasi yang sudah ada di disk — wajib dipanggil sebelum membaca/mengedit proyek lama yang tidak dibuat di turn ini.', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'project_save', 'Simpan proyek ke disk (concat.json). Panggil setelah selesai mengedit, wajib bila user ingin melanjutkan manual di aplikasi.', $req( array( 'project' => $path ), array( 'project' ) ) ),
-			array( 'project_close', 'Tutup proyek di engine dan lepas lock "Remote API" — pakai bila user ingin membuka/mengekspor proyek lewat UI Clovercut.', $req( array( 'project' => $path ), array( 'project' ) ) ),
+			array( 'project_close', 'Tutup proyek di engine dan lepas lock "Remote API" — pakai bila user ingin membuka/mengekspor proyek lewat UI Studio Inspirasi.', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'set_video', 'Ubah ukuran/fps video timeline proyek (mis. vertikal 1080x1920 untuk reel).', $req( array( 'project' => $path, 'video' => array( 'type' => 'object', 'description' => '{width, height, rateNum?, rateDen?}' ) ), array( 'project', 'video' ) ) ),
 			array( 'template_list', 'Daftar template proyek yang tersimpan di Studio Inspirasi — mengembalikan path untuk dipakai template_instantiate.', $req( array(), array() ) ),
 			array( 'template_instantiate', 'Buat proyek baru dari template di workspace — struktur timeline, ukuran, media, dan overlay ikut terbawa. fills = array pengisian slot placeholder (boleh kosong).', $req( array( 'template' => array( 'type' => 'string', 'description' => 'Path template dari template_list' ), 'name' => array( 'type' => 'string', 'description' => 'Nama proyek baru' ), 'fills' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ) ), array( 'template', 'name', 'fills' ) ) ),
@@ -274,7 +274,7 @@ class CC_Tools {
 	 */
 	public static function replace_clip_media( &$ctx, $project, $clip, $file ) {
 		// media.import menyalin file ke assets/ proyek — wajib agar preview
-		// Clovercut bisa membaca (path eksternal → preview kosong).
+		// Studio Inspirasi bisa membaca (path eksternal → preview kosong).
 		$mi = self::cx( $ctx )->call( 'media.import', array( 'path' => $project, 'file' => $file ), 90 );
 		if ( is_wp_error( $mi ) ) {
 			return self::err( $mi );

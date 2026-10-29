@@ -80,7 +80,7 @@ function cc_default_prompt() {
 		. 'Jawab dalam Bahasa Indonesia yang sopan dan ringkas. '
 		. "Semua proyek baru harus dibuat di folder kerja: {$home}. "
 		. 'Sebelum mengedit: pahami dulu permintaan user, buat proyek bila belum ada (proyek lama dibuka dulu dengan project_open), import media, dan baca timeline_read untuk id clip — jangan menebak id. '
-		. 'Setelah edit selesai selalu simpan dengan project_save; bila user ingin melanjutkan manual di aplikasi Clovercut, tutup dengan project_close. '
+		. 'Setelah edit selesai selalu simpan dengan project_save; bila user ingin melanjutkan manual di aplikasi Studio Inspirasi, tutup dengan project_close. '
 		. 'Bila user menyebut template atau struktur yang dipakai berulang, gunakan template_list + template_instantiate daripada menyusun timeline dari nol. '
 		. 'Untuk mengganti video pada clip hasil template, pakai replace_clip_media — posisi dan trim clip dipertahankan. '
 		. 'Untuk beberapa edit yang berkaitan, gabungkan dalam satu panggilan edit_apply. '

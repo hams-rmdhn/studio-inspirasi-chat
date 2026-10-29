@@ -164,7 +164,7 @@ get_header();
 
 				<div class="cc-field"><span>Aksi akhir</span>
 					<label class="cc-radio"><input type="radio" value="handoff" x-model="ctl.f.action">
-						Simpan & serah ke Clovercut — ekspor manual di aplikasi</label>
+						Simpan & serah ke Studio Inspirasi — ekspor manual di aplikasi</label>
 					<label class="cc-radio"><input type="radio" value="export" x-model="ctl.f.action">
 						Langsung export via API</label>
 				</div>

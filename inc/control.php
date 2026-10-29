@@ -574,17 +574,27 @@ function cc_control_enqueue( $params ) {
 	}
 
 	// A user-role row summarises the request so the thread reads naturally.
-	$segs_txt = '';
-	foreach ( (array) ( $params['segments'] ?? array() ) as $s ) {
-		$segs_txt .= ( $segs_txt ? ', ' : '' ) . cc_fmt_time( $s['start'] ?? 0 ) . '–' . cc_fmt_time( $s['end'] ?? 0 );
+	if ( 'moments' === ( $params['mode'] ?? 'manual' ) ) {
+		$segs_txt = sprintf(
+			'momen AI: %d × %d–%ds',
+			(int) ( $params['moment_count'] ?? 3 ),
+			(int) ( $params['moment_min'] ?? 30 ),
+			(int) ( $params['moment_max'] ?? 90 )
+		);
+	} else {
+		$segs_txt = '';
+		foreach ( (array) ( $params['segments'] ?? array() ) as $s ) {
+			$segs_txt .= ( $segs_txt ? ', ' : '' ) . cc_fmt_time( $s['start'] ?? 0 ) . '–' . cc_fmt_time( $s['end'] ?? 0 );
+		}
+		if ( '' === $segs_txt ) {
+			$segs_txt = cc_fmt_time( $params['start'] ?? 0 ) . '–' . cc_fmt_time( $params['end'] ?? 0 );
+		}
 	}
-	if ( '' === $segs_txt ) {
-		$segs_txt = cc_fmt_time( $params['start'] ?? 0 ) . '–' . cc_fmt_time( $params['end'] ?? 0 );
-	}
-	$summary = 'Template: ' . ( $params['template_label'] ?? '(tanpa template)' )
+	$tpl_label = trim( (string) ( $params['template_label'] ?? '' ) );
+	$summary   = 'Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
 		. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
 		. ' — segmen: ' . $segs_txt
-		. ' — aksi: ' . ( 'export' === $params['action'] ? 'export' : 'simpan & serah ke Clovercut' );
+		. ' — aksi: ' . ( 'export' === $params['action'] ? 'export' : 'simpan & serah ke Studio Inspirasi' );
 	cc_message_add( $session, 'user', $summary );
 
 	$placeholder = cc_message_add( $session, 'assistant', '', null, 'queued' );
@@ -676,6 +686,14 @@ function cc_control_run( $job ) {
 		} catch ( CC_Control_Abort $e ) {
 			$cx->close();
 			return $e->wp_error;
+		}
+		// Tampilkan momen yang dipilih AI di thread.
+		$list = array();
+		foreach ( $seg_titles as $i => $t ) {
+			$list[] = ( $i + 1 ) . '. ' . $t['title'] . ' (' . cc_fmt_time( $t['start'] ) . '–' . cc_fmt_time( $t['end'] ) . ')';
+		}
+		if ( $list ) {
+			cc_message_add( $session_id, 'assistant', 'Momen terpilih: ' . implode( ' · ', $list ) );
 		}
 	}
 
@@ -1054,14 +1072,14 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 		/* 6a. Hand off to the Clovercut UI */
 		if ( 'export' !== ( $p['action'] ?? '' ) ) {
 			$step(
-				'Menutup proyek (serah ke Clovercut)',
+				'Menutup proyek (serah ke Studio Inspirasi)',
 				function () use ( $cx, $project ) {
 					$r = $cx->call( 'project.close', array( 'path' => $project ), 15 );
 					return is_wp_error( $r ) ? $r : true;
 				}
 			);
 			return array(
-				'body' => 'Proyek **' . ( $p['name'] ?? 'project' ) . '** siap di `' . $project . '` — buka di Clovercut untuk ditinjau & diekspor manual.' . $warn,
+				'body' => 'Proyek **' . ( $p['name'] ?? 'project' ) . '** siap di `' . $project . '` — buka di Studio Inspirasi untuk ditinjau & diekspor manual.' . $warn,
 				'meta' => $meta,
 			);
 		}
