@@ -1,0 +1,83 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Studio Inspirasi Chat — AI Video Automation untuk WordPress</title>
+<style>
+:root{--bg:#0b0f14;--panel:#12181f;--border:#243040;--text:#e6edf3;--muted:#8b98a5;--pri:#059669;--pri2:#10b981}
+*{margin:0;padding:0;box-sizing:border-box}
+body{font-family:'Inter',system-ui,-apple-system,sans-serif;background:var(--bg);color:var(--text);line-height:1.6}
+.wrap{max-width:960px;margin:0 auto;padding:0 1.5rem}
+.hero{padding:5rem 0 3rem;text-align:center}
+.badge{display:inline-block;background:rgba(5,150,105,.14);color:var(--pri2);border:1px solid rgba(5,150,105,.35);border-radius:999px;padding:.25rem .9rem;font-size:.8rem;font-weight:600;margin-bottom:1.2rem}
+h1{font-size:2.6rem;font-weight:800;letter-spacing:-.02em;margin-bottom:1rem}
+h1 span{color:var(--pri2)}
+.hero p{color:var(--muted);font-size:1.15rem;max-width:640px;margin:0 auto 2rem}
+.shot{border:1px solid var(--border);border-radius:1rem;overflow:hidden;box-shadow:0 20px 60px rgba(0,0,0,.5);margin:0 auto;max-width:880px}
+.shot img{width:100%;display:block}
+section{padding:3rem 0}
+h2{font-size:1.6rem;font-weight:700;margin-bottom:1.5rem;text-align:center}
+.grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(260px,1fr));gap:1rem}
+.card{background:var(--panel);border:1px solid var(--border);border-radius:.9rem;padding:1.4rem}
+.card h3{font-size:1.05rem;margin-bottom:.5rem}
+.card p{color:var(--muted);font-size:.9rem}
+.card .ic{font-size:1.4rem;margin-bottom:.6rem}
+ol.flow{counter-reset:s;list-style:none;max-width:620px;margin:0 auto}
+ol.flow li{counter-increment:s;background:var(--panel);border:1px solid var(--border);border-radius:.8rem;padding:1rem 1.2rem 1rem 3.4rem;position:relative;margin-bottom:.8rem;color:var(--muted);font-size:.92rem}
+ol.flow li::before{content:counter(s);position:absolute;left:1rem;top:50%;transform:translateY(-50%);width:1.8rem;height:1.8rem;border-radius:50%;background:var(--pri);color:#fff;font-weight:700;display:flex;align-items:center;justify-content:center;font-size:.9rem}
+ol.flow b{color:var(--text)}
+.req{background:var(--panel);border:1px solid var(--border);border-radius:.9rem;padding:1.4rem;max-width:620px;margin:0 auto;color:var(--muted);font-size:.92rem}
+.req code{background:#0d1218;border:1px solid var(--border);border-radius:.35rem;padding:.1rem .4rem;color:var(--pri2)}
+.cta{text-align:center;padding:3rem 0 4rem}
+.btn{display:inline-block;background:var(--pri);color:#fff;font-weight:700;padding:.8rem 1.8rem;border-radius:.7rem;text-decoration:none;font-size:1rem}
+.btn.alt{background:transparent;border:1px solid var(--border);color:var(--text);margin-left:.6rem}
+footer{border-top:1px solid var(--border);padding:1.5rem 0;text-align:center;color:var(--muted);font-size:.82rem}
+</style>
+</head>
+<body>
+<div class="wrap">
+<header class="hero">
+	<div class="badge">Tema WordPress · Open Source</div>
+	<h1>Edit video dengan <span>obrolan</span>,<br>bukan dengan timeline.</h1>
+	<p>Studio Inspirasi Chat menghubungkan WordPress dengan aplikasi desktop <strong>Studio Inspirasi</strong> — ketik perintah dalam bahasa Indonesia, AI mengerjakan perakitan video untuk Anda.</p>
+	<div class="shot"><img src="preview.png" alt="Tampilan Studio Inspirasi Chat — mode Chat dengan task cards pipeline"></div>
+</header>
+
+<section>
+	<h2>Tiga Cara Produksi Otomatis</h2>
+	<div class="grid">
+		<div class="card"><div class="ic">✂️</div><h3>Potong Video (Clipper)</h3><p>Tempel link YouTube atau pilih file — potong segmen manual, atau biarkan AI memilih momen terbaik dari transkrip. Jeda hening bisa dipotong otomatis via <code>silencedetect</code>.</p></div>
+		<div class="card"><div class="ic">🎭</div><h3>Talking Head + B-Roll</h3><p>Satu video pembicara + folder koleksi B-Roll &amp; SFX. AI Director membaca transkrip kalimat lalu menyisipkan visual pendukung pada momen yang tepat — lengkap dengan animasi masuk/keluar.</p></div>
+		<div class="card"><div class="ic">🎬</div><h3>Rakit dari Voice Over</h3><p>Bawa narasi MP3, folder B-Roll, dan SFX — AI menyusun storyboard dan merakit seluruh klip menutup durasi VO, plus subtitle otomatis dari Whisper.</p></div>
+	</div>
+</section>
+
+<section>
+	<h2>Cara Kerjanya</h2>
+	<ol class="flow">
+		<li><b>Ketik perintah atau isi wizard</b> — mode Chat (bahasa natural) atau mode Control (form 4 langkah dengan preview task).</li>
+		<li><b>AI menyusun rencana</b> — function calling memetakan perintah Anda ke tool: unduh YouTube, scan folder B-Roll, transkripsi Whisper, sampai Edit Decision List.</li>
+		<li><b>Studio Inspirasi bekerja</b> — perintah diterjemahkan ke JSON-RPC Automation API: track, clip, caption, transisi, animasi, dan export.</li>
+		<li><b>Tinjau &amp; ekspor</b> — proyek siap dibuka di Studio Inspirasi; timeline nyata yang masih bisa Anda poles manual.</li>
+	</ol>
+</section>
+
+<section>
+	<h2>Yang Anda Butuhkan</h2>
+	<div class="req">
+		<p>• <b>Studio Inspirasi</b> (aplikasi desktop, Automation API aktif)<br>
+		• Server <b>WordPress</b> lokal/hosting + PHP 7.4+<br>
+		• <b>API key</b> salah satu provider: OpenAI, Groq, Cerebras, OpenRouter, GitHub Models — atau <b>Ollama lokal (gratis)</b><br>
+		• Tools <code>ffmpeg</code> &amp; <code>yt-dlp</code> sudah terbundel di tema (<code>bin/</code>)</p>
+	</div>
+</section>
+
+<div class="cta">
+	<a class="btn" href="https://github.com/hams-rmdhn/studio-inspirasi-chat/archive/refs/heads/main.zip">Unduh Tema (ZIP)</a>
+	<a class="btn alt" href="https://github.com/hams-rmdhn/studio-inspirasi-chat">Lihat di GitHub</a>
+</div>
+</div>
+<footer>Studio Inspirasi Chat · MIT License · Dibangun untuk kreator konten</footer>
+</body>
+</html>

@@ -1,5 +1,7 @@
 # Studio Inspirasi Chat
 
+![Studio Inspirasi Chat — mode Chat dengan task cards pipeline](docs/preview.png)
+
 WordPress theme yang mengendalikan **Studio Inspirasi** (video editor desktop)
 lewat percakapan natural-language + form Control deterministik. Dibangun di
 atas OpenAI function calling dan JSON-RPC automation API milik Studio Inspirasi.
