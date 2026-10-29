@@ -435,8 +435,21 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'silence_db'    => (float) $request->get_param( 'silence_db' ),
 		'silence_min'   => (float) $request->get_param( 'silence_min' ),
 		'silence_pad'   => (float) $request->get_param( 'silence_pad' ),
+		'workflow'      => sanitize_key( (string) $request->get_param( 'workflow' ) ),
+		'vo_file'       => wp_normalize_path( (string) $request->get_param( 'vo_file' ) ),
+		'broll_dir'     => wp_normalize_path( (string) $request->get_param( 'broll_dir' ) ),
+		'sfx_dir'       => wp_normalize_path( (string) $request->get_param( 'sfx_dir' ) ),
+		'broll_vision'  => ! empty( $request->get_param( 'broll_vision' ) ) && 'false' !== $request->get_param( 'broll_vision' ),
+		'broll_pacing'  => sanitize_key( (string) $request->get_param( 'broll_pacing' ) ),
+		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
 		'segments'      => array(),
 	);
+	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly' ), true ) ) {
+		$p['workflow'] = 'clip';
+	}
+	if ( ! in_array( $p['broll_pacing'], array( 'calm', 'dynamic', 'sentence' ), true ) ) {
+		$p['broll_pacing'] = 'calm';
+	}
 	if ( ! in_array( $p['cap_lang'], array( 'id', 'en', 'auto', 'none' ), true ) ) {
 		$p['cap_lang'] = 'id';
 	}
@@ -487,12 +500,33 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 			return new WP_Error( 'cc_template', 'Template tidak ditemukan di daftar Studio Inspirasi.', array( 'status' => 400 ) );
 		}
 	}
-	if ( cc_control_is_yt( $p['file'] ) ) {
+	if ( 'assembly' === $p['workflow'] ) {
+		if ( '' === $p['vo_file'] && '' !== $p['file'] ) {
+			$p['vo_file'] = $p['file'];
+		}
+		if ( '' === $p['vo_file'] || ! file_exists( $p['vo_file'] ) ) {
+			return new WP_Error( 'cc_vo', 'File audio Voice Over tidak ditemukan: ' . $p['vo_file'], array( 'status' => 400 ) );
+		}
+		if ( ! CC_Tools::read_allowed( $p['vo_file'] ) ) {
+			return new WP_Error( 'cc_path', 'File Voice Over di luar folder yang diizinkan.', array( 'status' => 400 ) );
+		}
+	} elseif ( cc_control_is_yt( $p['file'] ) ) {
 		// URL YouTube — file di-resolve saat worker (download ke inbox).
 	} elseif ( '' === $p['file'] || ! file_exists( $p['file'] ) ) {
 		return new WP_Error( 'cc_file', 'File video tidak ditemukan: ' . $p['file'], array( 'status' => 400 ) );
 	} elseif ( ! CC_Tools::read_allowed( $p['file'] ) ) {
 		return new WP_Error( 'cc_path', 'File di luar folder yang diizinkan.', array( 'status' => 400 ) );
+	}
+	if ( in_array( $p['workflow'], array( 'broll', 'assembly' ), true ) ) {
+		if ( '' === $p['broll_dir'] || ! is_dir( $p['broll_dir'] ) ) {
+			return new WP_Error( 'cc_broll', 'Folder B-Roll belum diisi atau tidak ditemukan: ' . $p['broll_dir'], array( 'status' => 400 ) );
+		}
+		if ( ! CC_Tools::read_allowed( $p['broll_dir'] ) ) {
+			return new WP_Error( 'cc_path', 'Folder B-Roll di luar daftar yang diizinkan.', array( 'status' => 400 ) );
+		}
+		if ( '' !== $p['sfx_dir'] && ( ! is_dir( $p['sfx_dir'] ) || ! CC_Tools::read_allowed( $p['sfx_dir'] ) ) ) {
+			return new WP_Error( 'cc_sfx', 'Folder SFX tidak ditemukan atau di luar folder yang diizinkan.', array( 'status' => 400 ) );
+		}
 	}
 	if ( ! array_key_exists( $p['aspect'], cc_aspect_dims() ) ) {
 		$p['aspect'] = '9:16';
@@ -505,7 +539,7 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 			return new WP_Error( 'cc_srt', 'Subtitle harus berupa file .srt.', array( 'status' => 400 ) );
 		}
 	}
-	if ( $p['start'] < 0 || $p['end'] <= $p['start'] ) {
+	if ( 'assembly' !== $p['workflow'] && ( $p['start'] < 0 || $p['end'] <= $p['start'] ) ) {
 		return new WP_Error( 'cc_segment', 'Segmen tidak valid — selesai harus lebih besar dari mulai.', array( 'status' => 400 ) );
 	}
 	if ( '' !== $p['dest_dir'] && ! CC_Tools::write_allowed_dir( $p['dest_dir'] ) ) {

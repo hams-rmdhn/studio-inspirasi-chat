@@ -223,9 +223,25 @@ function ccChat() {
 		/* ---------------- control mode ---------------- */
 		ctl: {
 			templates: [], tplError: '', copyRoots: [], step: 0,
-			browseOpen: false, browse: { path: '', parent: '', dirs: [], files: [] },
-			f: { src: 'template', template: '', template_label: '', aspect: '9:16', file: '', mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90, silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1, segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff', output_name: '', dest_dir: '', srt: '', cap_lang: 'id' },
+			browseOpen: false, browseField: 'file', browseMode: 'file',
+			browse: { path: '', parent: '', dirs: [], files: [] },
+			f: {
+				workflow: 'clip', src: 'template', template: '', template_label: '', aspect: '9:16',
+				file: '', vo_file: '', broll_dir: '', sfx_dir: '', broll_vision: false,
+				broll_pacing: 'calm', broll_prompt: '',
+				mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90,
+				silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1,
+				segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff',
+				output_name: '', dest_dir: '', srt: '', cap_lang: 'id',
+			},
 			submitting: false, running: false, error: '', sessionId: 0,
+		},
+
+		ctlStepLabels() {
+			const wf = this.ctl.f.workflow;
+			if (wf === 'assembly') { return ['Sumber & VO', 'B-Roll & SFX', 'Arahan AI', 'Proyek']; }
+			if (wf === 'broll') { return ['Sumber', 'B-Roll & Sub', 'Segmen & AI', 'Proyek']; }
+			return ['Sumber', 'Subtitle', 'Segmen', 'Proyek'];
 		},
 
 		setMode(m) {
@@ -254,13 +270,20 @@ function ccChat() {
 
 		ctlSuggestName() {
 			if (this.ctl.f.name) { return; }
-			const base = (this.ctl.f.file.split('/').pop() || '').replace(/\.[^.]+$/, '');
+			const srcPath = this.ctl.f.workflow === 'assembly' ? this.ctl.f.vo_file : this.ctl.f.file;
+			const base = ((srcPath || '').split('/').pop() || '').replace(/\.[^.]+$/, '');
 			if (base) { this.ctl.f.name = 'reel-' + base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
 		},
 
-		ctlBrowseOpen() {
+		ctlBrowseOpen(field = 'file', mode = 'file') {
+			this.ctl.browseField = field;
+			this.ctl.browseMode = mode;
 			this.ctl.browseOpen = true;
-			const start = this.ctl.f.file ? this.ctl.f.file.replace(/\/[^/]*$/, '') : (CC_DATA.workspace || '') + 'inbox';
+			const curVal = this.ctl.f[field] || '';
+			let start = (CC_DATA.workspace || '').replace(/\/+$/, '') + '/Assets';
+			if (curVal && curVal.startsWith('/')) {
+				start = mode === 'dir' ? curVal : curVal.replace(/\/[^/]*$/, '');
+			}
 			this.ctlBrowseTo(start);
 		},
 
@@ -274,9 +297,18 @@ function ccChat() {
 		},
 
 		ctlPick(path) {
-			this.ctl.f.file = path;
+			const field = this.ctl.browseField || 'file';
+			this.ctl.f[field] = path;
 			this.ctl.browseOpen = false;
 			this.ctlSuggestName();
+		},
+
+		ctlPickDir() {
+			const field = this.ctl.browseField || 'broll_dir';
+			if (this.ctl.browse.path) {
+				this.ctl.f[field] = this.ctl.browse.path;
+			}
+			this.ctl.browseOpen = false;
 		},
 
 		ctlSize(bytes) {
@@ -302,25 +334,40 @@ function ccChat() {
 			this.ctl.error = '';
 			const f = this.ctl.f;
 			if (!f.name.trim()) { this.ctl.error = 'Nama proyek wajib diisi.'; return; }
-			if (!f.file.trim()) { this.ctl.error = 'File video wajib diisi.'; return; }
 			if (f.src === 'template' && !f.template) { this.ctl.error = 'Pilih template dulu.'; return; }
-			const segments = [];
-			for (const s of f.segments) {
-				const st = this.ccParseTime(s.start), en = this.ccParseTime(s.end);
-				if (st === null || en === null) { this.ctl.error = 'Format waktu tidak dikenali — pakai m:ss (mis. 6:02).'; return; }
-				if (en <= st) { this.ctl.error = 'Selesai harus lebih besar dari mulai.'; return; }
-				segments.push({ start: st, end: en });
+			if (f.workflow === 'assembly') {
+				if (!f.vo_file.trim()) { this.ctl.error = 'File audio Voice Over wajib diisi.'; return; }
+				if (!f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
+			} else {
+				if (!f.file.trim()) { this.ctl.error = 'File video wajib diisi.'; return; }
+				if (f.workflow === 'broll' && !f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
 			}
-			if (!segments.length) { this.ctl.error = 'Minimal satu segmen.'; return; }
+			const segments = [];
+			if (f.workflow !== 'assembly') {
+				for (const s of f.segments) {
+					const st = this.ccParseTime(s.start), en = this.ccParseTime(s.end);
+					if (st === null || en === null) { this.ctl.error = 'Format waktu tidak dikenali — pakai m:ss (mis. 6:02).'; return; }
+					if (en <= st) { this.ctl.error = 'Selesai harus lebih besar dari mulai.'; return; }
+					segments.push({ start: st, end: en });
+				}
+				if (!segments.length) { this.ctl.error = 'Minimal satu segmen.'; return; }
+			} else {
+				segments.push({ start: 0, end: 10 });
+			}
 			this.ctl.submitting = true;
 			try {
 				const d = await ccPost('/control/run', {
+					workflow: f.workflow,
 					template: f.src === 'template' ? f.template : '',
 					template_label: f.src === 'template' ? f.template_label : '',
-					aspect: f.aspect, srt: f.srt, cap_lang: f.cap_lang, file: f.file,
+					aspect: f.aspect, srt: f.srt, cap_lang: f.cap_lang,
+					file: f.file, vo_file: f.vo_file,
+					broll_dir: f.broll_dir, sfx_dir: f.sfx_dir,
+					broll_vision: f.broll_vision ? '1' : '',
+					broll_pacing: f.broll_pacing, broll_prompt: f.broll_prompt,
 					mode: f.mode, moment_count: f.moment_count, moment_min: f.moment_min, moment_max: f.moment_max,
 					silence_cut: f.silence_cut ? '1' : '', silence_db: f.silence_db, silence_min: f.silence_min, silence_pad: f.silence_pad,
-					session_id: this.sessionId || 0,
+					session_id: this.activeId || this.ctl.sessionId || 0,
 					segments: segments,
 					start: segments[0].start, end: segments[0].end,
 					name: f.name, action: f.action,

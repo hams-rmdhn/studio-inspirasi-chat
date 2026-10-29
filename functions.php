@@ -21,6 +21,7 @@ require_once __DIR__ . '/inc/openai.php';
 require_once __DIR__ . '/inc/tools.php';
 require_once __DIR__ . '/inc/jobs.php';
 require_once __DIR__ . '/inc/control.php';
+require_once __DIR__ . '/inc/assembly.php';
 require_once __DIR__ . '/inc/render.php';
 require_once __DIR__ . '/inc/rest.php';
 require_once __DIR__ . '/inc/chat.php';

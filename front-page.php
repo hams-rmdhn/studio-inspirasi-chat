@@ -77,7 +77,7 @@ get_header();
 			<div class="cc-ctl-card">
 				<!-- Indikator langkah -->
 				<div class="cc-steps" role="list">
-					<template x-for="(lbl, i) in ['Sumber','Subtitle','Segmen','Proyek']" :key="i">
+					<template x-for="(lbl, i) in ctlStepLabels()" :key="i">
 						<div class="cc-step-item" :class="ctl.step === i ? 'cc-step-on' : (ctl.step > i ? 'cc-step-done' : '')">
 							<button type="button" class="cc-step" @click="ctl.step = i">
 								<span class="cc-step-num">
@@ -91,10 +91,18 @@ get_header();
 					</template>
 				</div>
 
-				<!-- LANGKAH 1: Sumber & Video -->
+				<!-- LANGKAH 1: Sumber & Video / VO -->
 				<div x-show="ctl.step === 0">
 				<h4 class="cc-sec">Sumber & Video</h4>
-				<div class="cc-field"><span>Sumber proyek</span>
+				<label class="cc-field"><span>Jenis produksi</span>
+					<select x-model="ctl.f.workflow" class="cc-input" @change="ctlSuggestName()">
+						<option value="clip">Potong Video (Clipper — 1 video jadi klip pendek)</option>
+						<option value="broll">Talking Head + Auto B-Roll & SFX (AI)</option>
+						<option value="assembly">Rakit Penuh dari Voice Over + B-Roll & SFX (AI)</option>
+					</select>
+				</label>
+
+				<div class="cc-field"><span>Sumber komposisi</span>
 					<div class="cc-tabs">
 						<button type="button" @click="ctl.f.src = 'template'" :class="ctl.f.src === 'template' && 'cc-tab-on'" class="cc-tab">Dari template</button>
 						<button type="button" @click="ctl.f.src = 'baru'" :class="ctl.f.src === 'baru' && 'cc-tab-on'" class="cc-tab">Proyek baru</button>
@@ -109,7 +117,7 @@ get_header();
 						</template>
 					</select>
 					<small class="cc-note" x-show="ctl.tplError" x-cloak x-text="ctl.tplError"></small>
-					<small class="cc-note">Ukuran & struktur mengikuti template.</small>
+					<small class="cc-note">Ukuran, frame, & gaya subtitle mengikuti template.</small>
 				</label>
 
 				<label class="cc-field" x-show="ctl.f.src === 'baru'"><span>Aspect ratio</span>
@@ -121,84 +129,144 @@ get_header();
 					</select>
 				</label>
 
-				<label class="cc-field"><span>File video</span>
+				<label class="cc-field" x-show="ctl.f.workflow !== 'assembly'">
+					<span x-text="ctl.f.workflow === 'broll' ? 'Video utama (Talking Head)' : 'File video'"></span>
 					<div class="cc-filerow">
 						<input type="text" x-model="ctl.f.file" @input="ctlSuggestName()" class="cc-input" placeholder="/path/ke/video.mp4 atau URL YouTube">
-						<button type="button" @click="ctlBrowseOpen()" class="cc-btn">Browse</button>
+						<button type="button" @click="ctlBrowseOpen('file', 'file')" class="cc-btn">Browse</button>
 					</div>
-					<small class="cc-note">Tempel link <code>youtube.com</code>/<code>youtu.be</code> — video & subtitle-nya diunduh otomatis.</small>
+					<small class="cc-note">Tempel link <code>youtube.com</code>/<code>youtu.be</code> atau pilih file video lokal.</small>
+				</label>
+
+				<label class="cc-field" x-show="ctl.f.workflow === 'assembly'" x-cloak>
+					<span>File audio Voice Over (MP3/WAV)</span>
+					<div class="cc-filerow">
+						<input type="text" x-model="ctl.f.vo_file" @input="ctlSuggestName()" class="cc-input" placeholder="/path/ke/voiceover.mp3">
+						<button type="button" @click="ctlBrowseOpen('vo_file', 'file')" class="cc-btn">Browse</button>
+					</div>
+					<small class="cc-note">Durasi akhir video mengikuti panjang Voice Over ini.</small>
 				</label>
 
 				</div>
 
-				<!-- LANGKAH 2: Subtitle -->
+				<!-- LANGKAH 2: Bahan B-Roll & Subtitle -->
 				<div x-show="ctl.step === 1">
-				<h4 class="cc-sec">Subtitle</h4>
-				<label class="cc-field"><span>Caption</span>
+				<h4 class="cc-sec">Bahan & Subtitle</h4>
+				<template x-if="ctl.f.workflow !== 'clip'">
+					<div style="display:flex;flex-direction:column;gap:1rem">
+						<label class="cc-field"><span>Folder koleksi video B-Roll</span>
+							<div class="cc-filerow">
+								<input type="text" x-model="ctl.f.broll_dir" class="cc-input" placeholder="/Users/.../Assets/broll">
+								<button type="button" @click="ctlBrowseOpen('broll_dir', 'dir')" class="cc-btn">Pilih Folder</button>
+							</div>
+							<small class="cc-note">Taruh semua klip video bahan (.mp4/.mov) di dalam satu folder.</small>
+						</label>
+
+						<div class="cc-field"><span>Pengenalan visual B-Roll</span>
+							<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
+								<input type="checkbox" x-model="ctl.f.broll_vision"> Scan isi visual tiap video dengan AI Vision
+							</label>
+							<small class="cc-note">Jika tidak dicentang, AI mengenali klip dari nama file (instan & gratis). Hasil scan Vision di-cache di folder.</small>
+						</div>
+
+						<label class="cc-field"><span>Folder Sound Effects / SFX <em class="cc-tag">opsional</em></span>
+							<div class="cc-filerow">
+								<input type="text" x-model="ctl.f.sfx_dir" class="cc-input" placeholder="/Users/.../Assets/sfx">
+								<button type="button" @click="ctlBrowseOpen('sfx_dir', 'dir')" class="cc-btn">Pilih Folder</button>
+							</div>
+							<small class="cc-note">Koleksi audio transisi (.mp3/.wav) yang akan dipasang otomatis saat pergantian B-Roll.</small>
+						</label>
+					</div>
+				</template>
+
+				<label class="cc-field"><span>Caption & transkrip bahasa</span>
 					<select x-model="ctl.f.cap_lang" class="cc-input">
-						<option value="id">Indonesia (auto-caption)</option>
+						<option value="id">Indonesia (auto-caption / Whisper)</option>
 						<option value="en">English</option>
-						<option value="auto">Semua yang tersedia</option>
+						<option value="auto">Deteksi otomatis</option>
 						<option value="none">Tanpa subtitle</option>
 					</select>
 				</label>
 				<label class="cc-field"><span>File .srt manual <em class="cc-tag">opsional</em></span>
-					<input type="text" x-model="ctl.f.srt" class="cc-input" placeholder="/path/ke/subtitle.srt — override caption YouTube">
-					<small class="cc-note">Bila diisi, dipakai apa adanya tanpa potongan waktu.</small>
+					<div class="cc-filerow">
+						<input type="text" x-model="ctl.f.srt" class="cc-input" placeholder="/path/ke/subtitle.srt — override transkrip otomatis">
+						<button type="button" @click="ctlBrowseOpen('srt', 'file')" class="cc-btn">Browse</button>
+					</div>
+					<small class="cc-note">Kosongkan untuk memakai subtitle YouTube atau transkrip Whisper otomatis.</small>
 				</label>
 
 				</div>
 
-				<!-- LANGKAH 3: Segmen & Potong -->
+				<!-- LANGKAH 3: Segmen, Potong & Arahan AI -->
 				<div x-show="ctl.step === 2">
-				<h4 class="cc-sec">Segmen & Potong</h4>
-				<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
-					<select x-model="ctl.f.mode" class="cc-input" style="margin-bottom:.55rem">
-						<option value="manual">Manual — tentukan rentang waktu</option>
-						<option value="moments">Otomatis — momen terbaik (AI)</option>
-					</select>
-					<div x-show="ctl.f.mode === 'moments'" class="cc-inline-row">
-						<input type="number" x-model.number="ctl.f.moment_count" min="1" max="10" class="cc-input cc-input-num" title="Jumlah momen">
-						<span class="cc-note">momen · durasi</span>
-						<input type="number" x-model.number="ctl.f.moment_min" min="5" class="cc-input cc-input-num" title="Durasi minimum (detik)">
-						<span class="cc-note">–</span>
-						<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input cc-input-num" title="Durasi maksimum (detik)">
-						<span class="cc-note">detik</span>
-					</div>
-					<template x-if="ctl.f.mode === 'manual'">
-						<div>
-							<template x-for="(s, i) in ctl.f.segments" :key="i">
-								<div class="cc-segrow">
-									<input type="text" x-model="s.start" class="cc-input cc-input-time" placeholder="2:30" inputmode="numeric">
-									<span class="cc-note">s/d</span>
-									<input type="text" x-model="s.end" class="cc-input cc-input-time" placeholder="3:32" inputmode="numeric">
-									<button type="button" @click="ctl.f.segments.splice(i, 1)" x-show="ctl.f.segments.length > 1" class="cc-set" title="Hapus segmen" aria-label="Hapus segmen">
-										<i data-lucide="x" class="w-4 h-4"></i>
+				<h4 class="cc-sec">Segmen & Arahan AI</h4>
+				<template x-if="ctl.f.workflow !== 'assembly'">
+					<div style="display:flex;flex-direction:column;gap:1rem">
+						<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
+							<select x-model="ctl.f.mode" class="cc-input" style="margin-bottom:.55rem">
+								<option value="manual">Manual — tentukan rentang waktu</option>
+								<option value="moments">Otomatis — momen terbaik (AI)</option>
+							</select>
+							<div x-show="ctl.f.mode === 'moments'" class="cc-inline-row">
+								<input type="number" x-model.number="ctl.f.moment_count" min="1" max="10" class="cc-input cc-input-num" title="Jumlah momen">
+								<span class="cc-note">momen · durasi</span>
+								<input type="number" x-model.number="ctl.f.moment_min" min="5" class="cc-input cc-input-num" title="Durasi minimum (detik)">
+								<span class="cc-note">–</span>
+								<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input cc-input-num" title="Durasi maksimum (detik)">
+								<span class="cc-note">detik</span>
+							</div>
+							<template x-if="ctl.f.mode === 'manual'">
+								<div>
+									<template x-for="(s, i) in ctl.f.segments" :key="i">
+										<div class="cc-segrow">
+											<input type="text" x-model="s.start" class="cc-input cc-input-time" placeholder="2:30" inputmode="numeric">
+											<span class="cc-note">s/d</span>
+											<input type="text" x-model="s.end" class="cc-input cc-input-time" placeholder="3:32" inputmode="numeric">
+											<button type="button" @click="ctl.f.segments.splice(i, 1)" x-show="ctl.f.segments.length > 1" class="cc-set" title="Hapus segmen" aria-label="Hapus segmen">
+												<i data-lucide="x" class="w-4 h-4"></i>
+											</button>
+										</div>
+									</template>
+									<button type="button" @click="ctl.f.segments.push({start: '', end: ''})" class="cc-btn cc-btn-ghost cc-btn-sm">
+										<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah segmen
 									</button>
 								</div>
 							</template>
-							<button type="button" @click="ctl.f.segments.push({start: '', end: ''})" class="cc-btn cc-btn-ghost cc-btn-sm">
-								<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah segmen
-							</button>
+							<small class="cc-note">Manual: format <code>m:ss</code>. Otomatis: AI pilih momen dari transkrip — judul dipakai sebagai nama proyek.</small>
 						</div>
-					</template>
-					<small class="cc-note">Manual: format <code>m:ss</code>. Otomatis: AI pilih momen dari transkrip (YouTube) — judul dipakai sebagai nama proyek.</small>
-				</div>
 
-				<div class="cc-field"><span>Potong</span>
-					<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
-						<input type="checkbox" x-model="ctl.f.silence_cut"> Potong jeda hening
-					</label>
-					<div x-show="ctl.f.silence_cut" class="cc-inline-row">
-						<input type="number" x-model.number="ctl.f.silence_db" step="1" class="cc-input cc-input-num" title="Threshold dB">
-						<span class="cc-note">dB ·</span>
-						<input type="number" x-model.number="ctl.f.silence_min" step="0.1" min="0.2" class="cc-input cc-input-num" title="Min hening (detik)">
-						<span class="cc-note">s hening · pad</span>
-						<input type="number" x-model.number="ctl.f.silence_pad" step="0.05" class="cc-input cc-input-num" title="Padding (detik)">
-						<span class="cc-note">s</span>
+						<div class="cc-field"><span>Potong</span>
+							<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
+								<input type="checkbox" x-model="ctl.f.silence_cut"> Potong jeda hening
+							</label>
+							<div x-show="ctl.f.silence_cut" class="cc-inline-row">
+								<input type="number" x-model.number="ctl.f.silence_db" step="1" class="cc-input cc-input-num" title="Threshold dB">
+								<span class="cc-note">dB ·</span>
+								<input type="number" x-model.number="ctl.f.silence_min" step="0.1" min="0.2" class="cc-input cc-input-num" title="Min hening (detik)">
+								<span class="cc-note">s hening · pad</span>
+								<input type="number" x-model.number="ctl.f.silence_pad" step="0.05" class="cc-input cc-input-num" title="Padding (detik)">
+								<span class="cc-note">s</span>
+							</div>
+							<small class="cc-note">Buang bagian tanpa suara di tiap segmen — konten lebih rapat.</small>
+						</div>
 					</div>
-					<small class="cc-note">Buang bagian tanpa suara di tiap segmen — konten lebih rapat.</small>
-				</div>
+				</template>
+
+				<template x-if="ctl.f.workflow !== 'clip'">
+					<div style="display:flex;flex-direction:column;gap:1rem">
+						<label class="cc-field"><span>Ritme potongan B-Roll (Pacing)</span>
+							<select x-model="ctl.f.broll_pacing" class="cc-input">
+								<option value="calm">Santai (tiap 4–6.5 detik)</option>
+								<option value="sentence">Mengikuti kalimat / topik (3–6 detik)</option>
+								<option value="dynamic">Dinamis & cepat (tiap 2–4 detik)</option>
+							</select>
+						</label>
+						<label class="cc-field"><span>Instruksi untuk AI Director <em class="cc-tag">opsional</em></span>
+							<textarea x-model="ctl.f.broll_prompt" rows="2" class="cc-input" placeholder="Misal: tampilkan B-roll alam saat membahas ketenangan, gunakan sfx whoosh di tiap transisi…"></textarea>
+							<small class="cc-note">B-Roll otomatis di-fit memenuhi kanvas (fill) dan audionya di-mute agar suara utama jernih.</small>
+						</label>
+					</div>
+				</template>
 
 				</div>
 
@@ -365,11 +433,11 @@ get_header();
 		</div>
 	</div>
 
-	<!-- ============ MODAL: FILE BROWSER ============ -->
+	<!-- ============ MODAL: FILE / FOLDER BROWSER ============ -->
 	<div x-show="ctl.browseOpen" x-cloak class="cc-ovl" x-transition.opacity @click.self="ctl.browseOpen = false" @keydown.escape.window="ctl.browseOpen = false">
 		<div class="cc-modal cc-modal-lg">
 			<div class="flex items-center justify-between mb-3">
-				<h3 class="cc-modal-title">Pilih file video</h3>
+				<h3 class="cc-modal-title" x-text="ctl.browseMode === 'dir' ? 'Pilih folder' : 'Pilih file media'"></h3>
 				<button type="button" @click="ctl.browseOpen = false" class="cc-set" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
 			</div>
 			<div class="cc-browse-path">
@@ -377,6 +445,9 @@ get_header();
 					<i data-lucide="arrow-up" class="w-4 h-4"></i>
 				</button>
 				<span x-text="ctl.browse.path" class="cc-browse-cur"></span>
+				<button type="button" x-show="ctl.browseMode === 'dir'" x-cloak @click="ctlPickDir()" class="cc-btn cc-btn-primary cc-btn-sm">
+					Gunakan Folder Ini
+				</button>
 			</div>
 			<div class="cc-browse-list">
 				<template x-for="d in ctl.browse.dirs" :key="d.path">
@@ -385,12 +456,12 @@ get_header();
 					</button>
 				</template>
 				<template x-for="f in ctl.browse.files" :key="f.path">
-					<button type="button" @click="ctlPick(f.path)" class="cc-browse-item cc-browse-file">
+					<button type="button" @click="ctl.browseMode === 'dir' ? ctlPickDir() : ctlPick(f.path)" class="cc-browse-item cc-browse-file">
 						<i data-lucide="file-video" class="w-4 h-4"></i><span x-text="f.name"></span>
 						<span class="cc-browse-size" x-text="ctlSize(f.size)"></span>
 					</button>
 				</template>
-				<p x-show="!ctl.browse.dirs.length && !ctl.browse.files.length" x-cloak class="cc-note">Tidak ada file media di folder ini.</p>
+				<p x-show="!ctl.browse.dirs.length && !ctl.browse.files.length" x-cloak class="cc-note">Tidak ada subfolder atau file media di folder ini.</p>
 			</div>
 		</div>
 	</div>

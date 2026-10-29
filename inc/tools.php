@@ -88,7 +88,38 @@ class CC_Tools {
 			array( 'template_instantiate', 'Buat proyek baru dari template di workspace — struktur timeline, ukuran, media, dan overlay ikut terbawa. fills = array pengisian slot placeholder (boleh kosong).', $req( array( 'template' => array( 'type' => 'string', 'description' => 'Path template dari template_list' ), 'name' => array( 'type' => 'string', 'description' => 'Nama proyek baru' ), 'fills' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ) ), array( 'template', 'name', 'fills' ) ) ),
 			array( 'template_save', 'Simpan proyek sebagai template baru.', $req( array( 'project' => $path, 'name' => array( 'type' => 'string', 'description' => 'Nama template' ) ), array( 'project', 'name' ) ) ),
 			array( 'replace_clip_media', 'Ganti media sebuah clip dengan file baru — clip mempertahankan posisi, trim, dan efeknya. Pakai untuk mengisi clip utama hasil template dengan video baru.', $req( array( 'project' => $path, 'clip' => array( 'type' => 'string', 'description' => 'Id clip dari timeline_read' ), 'file' => $path ), array( 'project', 'clip', 'file' ) ) ),
-			array( 'control_run', 'Jalankan pipeline penuh seperti form Control: buat proyek dari template (atau proyek baru), ganti media utama dengan file/URL YouTube, potong segmen, caption, lalu simpan & serah atau export — satu proyek per segmen/momen. Pakai bila user meminta "buat video/reels" secara batch. mode=moments → AI memilih momen terbaik dari transkrip.', $req( array( 'file' => array( 'type' => 'string', 'description' => 'Path file video lokal atau URL YouTube' ), 'template' => array( 'type' => 'string', 'description' => 'Path template dari template_list — kosong = proyek baru' ), 'name' => array( 'type' => 'string', 'description' => 'Basis nama proyek' ), 'mode' => array( 'type' => 'string', 'enum' => array( 'manual', 'moments' ), 'description' => 'manual pakai segments; moments AI pilih momen' ), 'segments' => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{start,end,title?} detik' ) ), 'moment_count' => array( 'type' => 'integer' ), 'moment_min' => array( 'type' => 'integer' ), 'moment_max' => array( 'type' => 'integer' ), 'action' => array( 'type' => 'string', 'enum' => array( 'handoff', 'export' ), 'description' => 'handoff simpan & serah; export render mp4' ), 'silence_cut' => array( 'type' => 'boolean', 'description' => 'true = potong jeda hening otomatis' ), 'silence_db' => array( 'type' => 'number' ), 'silence_min' => array( 'type' => 'number' ), 'silence_pad' => array( 'type' => 'number' ) ), array( 'file' ) ) ),
+			array(
+				'control_run',
+				'Jalankan pipeline produksi otomatis seperti tab Control. Mendukung 3 workflow: '
+				. '(1) clip = potong video dari file/YouTube (manual/moments); '
+				. '(2) broll = video utama talking head + sisipan otomatis B-Roll dari broll_dir & SFX dari sfx_dir di atasnya sesuai kalimat; '
+				. '(3) assembly = rakit video penuh dari audio Voice Over (vo_file) + koleksi B-Roll (broll_dir) & SFX (sfx_dir).',
+				$req(
+					array(
+						'workflow'     => array( 'type' => 'string', 'enum' => array( 'clip', 'broll', 'assembly' ), 'description' => 'clip (default), broll (talking head + B-roll), atau assembly (VO MP3 + B-roll penuh)' ),
+						'file'         => array( 'type' => 'string', 'description' => 'Path file video lokal atau URL YouTube (untuk clip/broll)' ),
+						'vo_file'      => array( 'type' => 'string', 'description' => 'Path file audio Voice Over MP3/WAV (wajib untuk workflow=assembly)' ),
+						'broll_dir'    => array( 'type' => 'string', 'description' => 'Path folder berisi koleksi video B-Roll (wajib untuk workflow=broll/assembly)' ),
+						'sfx_dir'      => array( 'type' => 'string', 'description' => 'Path folder berisi koleksi audio SFX transisi (opsional)' ),
+						'broll_vision' => array( 'type' => 'boolean', 'description' => 'true = scan visual frame B-Roll dengan AI Vision' ),
+						'broll_pacing' => array( 'type' => 'string', 'enum' => array( 'calm', 'dynamic', 'sentence' ), 'description' => 'Gaya ritme potongan B-Roll' ),
+						'broll_prompt' => array( 'type' => 'string', 'description' => 'Arahan khusus untuk AI Director' ),
+						'template'     => array( 'type' => 'string', 'description' => 'Path template dari template_list — kosong = proyek baru' ),
+						'name'         => array( 'type' => 'string', 'description' => 'Basis nama proyek' ),
+						'mode'         => array( 'type' => 'string', 'enum' => array( 'manual', 'moments' ), 'description' => 'manual pakai segments; moments AI pilih momen' ),
+						'segments'     => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{start,end,title?} detik' ) ),
+						'moment_count' => array( 'type' => 'integer' ),
+						'moment_min'   => array( 'type' => 'integer' ),
+						'moment_max'   => array( 'type' => 'integer' ),
+						'action'       => array( 'type' => 'string', 'enum' => array( 'handoff', 'export' ), 'description' => 'handoff simpan & serah; export render mp4' ),
+						'silence_cut'  => array( 'type' => 'boolean', 'description' => 'true = potong jeda hening otomatis' ),
+						'silence_db'   => array( 'type' => 'number' ),
+						'silence_min'  => array( 'type' => 'number' ),
+						'silence_pad'  => array( 'type' => 'number' ),
+					),
+					array()
+				),
+			),
 			array( 'list_folder', 'Daftar file media dalam sebuah folder lokal (baca saja, dibatasi folder yang diizinkan).', $req( array( 'path' => $path ), array( 'path' ) ) ),
 			array( 'probe_file', 'Info detail sebuah file media (durasi, resolusi, dsb.).', $req( array( 'path' => $path ), array( 'path' ) ) ),
 			array( 'create_project', 'Buat proyek Studio Inspirasi baru di workspace. Mengembalikan path folder proyek — simpan untuk langkah berikutnya.', $req( array( 'name' => array( 'type' => 'string', 'description' => 'Nama proyek' ) ), array( 'name' ) ) ),
@@ -237,23 +268,34 @@ class CC_Tools {
 		if ( ! function_exists( 'cc_control_enqueue' ) ) {
 			return new WP_Error( 'cc_ctl', 'Pipeline control tidak tersedia.' );
 		}
+		$wf = sanitize_key( (string) ( $args['workflow'] ?? 'clip' ) );
+		if ( ! in_array( $wf, array( 'clip', 'broll', 'assembly' ), true ) ) {
+			$wf = 'clip';
+		}
 		$p = array(
-			'session_id'    => (int) ( $ctx['session_id'] ?? 0 ),
-			'file'          => (string) ( $args['file'] ?? '' ),
-			'src'           => ! empty( $args['template'] ) ? 'template' : 'baru',
-			'template'      => (string) ( $args['template'] ?? '' ),
+			'session_id'     => (int) ( $ctx['session_id'] ?? 0 ),
+			'workflow'       => $wf,
+			'file'           => (string) ( $args['file'] ?? '' ),
+			'vo_file'        => (string) ( $args['vo_file'] ?? '' ),
+			'broll_dir'      => (string) ( $args['broll_dir'] ?? '' ),
+			'sfx_dir'        => (string) ( $args['sfx_dir'] ?? '' ),
+			'broll_vision'   => ! empty( $args['broll_vision'] ),
+			'broll_pacing'   => in_array( $args['broll_pacing'] ?? '', array( 'calm', 'dynamic', 'sentence' ), true ) ? $args['broll_pacing'] : 'calm',
+			'broll_prompt'   => (string) ( $args['broll_prompt'] ?? '' ),
+			'src'            => ! empty( $args['template'] ) ? 'template' : 'baru',
+			'template'       => (string) ( $args['template'] ?? '' ),
 			'template_label' => basename( (string) ( $args['template'] ?? '' ) ),
-			'name'          => (string) ( $args['name'] ?? '' ),
-			'mode'          => 'moments' === ( $args['mode'] ?? '' ) ? 'moments' : 'manual',
-			'segments'      => (array) ( $args['segments'] ?? array() ),
-			'moment_count'  => (int) ( $args['moment_count'] ?? 3 ),
-			'moment_min'    => (int) ( $args['moment_min'] ?? 30 ),
-			'moment_max'    => (int) ( $args['moment_max'] ?? 90 ),
-			'action'        => 'export' === ( $args['action'] ?? '' ) ? 'export' : 'handoff',
-			'silence_cut'   => ! empty( $args['silence_cut'] ),
-			'silence_db'    => (float) ( $args['silence_db'] ?? -35 ),
-			'silence_min'   => (float) ( $args['silence_min'] ?? 0.5 ),
-			'silence_pad'   => (float) ( $args['silence_pad'] ?? 0.1 ),
+			'name'           => (string) ( $args['name'] ?? 'reel-ai' ),
+			'mode'           => 'moments' === ( $args['mode'] ?? '' ) ? 'moments' : 'manual',
+			'segments'       => (array) ( $args['segments'] ?? array() ),
+			'moment_count'   => (int) ( $args['moment_count'] ?? 3 ),
+			'moment_min'     => (int) ( $args['moment_min'] ?? 30 ),
+			'moment_max'     => (int) ( $args['moment_max'] ?? 90 ),
+			'action'         => 'export' === ( $args['action'] ?? '' ) ? 'export' : 'handoff',
+			'silence_cut'    => ! empty( $args['silence_cut'] ),
+			'silence_db'     => (float) ( $args['silence_db'] ?? -35 ),
+			'silence_min'    => (float) ( $args['silence_min'] ?? 0.5 ),
+			'silence_pad'    => (float) ( $args['silence_pad'] ?? 0.1 ),
 		);
 		$r = cc_control_enqueue( $p );
 		if ( is_wp_error( $r ) ) {

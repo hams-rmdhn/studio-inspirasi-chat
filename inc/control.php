@@ -743,10 +743,25 @@ function cc_control_enqueue( $params ) {
 		}
 	}
 	$tpl_label = trim( (string) ( $params['template_label'] ?? '' ) );
-	$summary   = 'Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
-		. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
-		. ' — segmen: ' . $segs_txt
-		. ' — aksi: ' . ( 'export' === $params['action'] ? 'export' : 'simpan & serah ke Studio Inspirasi' );
+	$wf        = (string) ( $params['workflow'] ?? 'clip' );
+	$act_txt   = 'export' === ( $params['action'] ?? '' ) ? 'export' : 'simpan & serah ke Studio Inspirasi';
+	if ( 'assembly' === $wf ) {
+		$summary = 'Mode: Rakit dari VO — Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
+			. ' — VO: ' . basename( (string) ( $params['vo_file'] ?? $params['file'] ?? '' ) )
+			. ' — B-Roll: ' . basename( (string) ( $params['broll_dir'] ?? '' ) )
+			. ' — aksi: ' . $act_txt;
+	} elseif ( 'broll' === $wf ) {
+		$summary = 'Mode: Talking Head + B-Roll — Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
+			. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
+			. ' — B-Roll: ' . basename( (string) ( $params['broll_dir'] ?? '' ) )
+			. ' — segmen: ' . $segs_txt
+			. ' — aksi: ' . $act_txt;
+	} else {
+		$summary = 'Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
+			. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
+			. ' — segmen: ' . $segs_txt
+			. ' — aksi: ' . $act_txt;
+	}
 	cc_message_add( $session, 'user', $summary );
 
 	$placeholder = cc_message_add( $session, 'assistant', '', null, 'queued' );
@@ -804,6 +819,31 @@ function cc_control_run( $job ) {
 		return $out;
 	};
 
+	// Mode 'assembly' (VO MP3 + koleksi B-Roll + SFX → 1 proyek utuh) punya jalur sendiri.
+	if ( 'assembly' === ( $p['workflow'] ?? 'clip' ) && function_exists( 'cc_assembly_run_vo' ) ) {
+		try {
+			$res = cc_assembly_run_vo( $cx, $ctx, $p, $step, $session_id );
+			$cx->close();
+			return $res;
+		} catch ( CC_Control_Abort $e ) {
+			$cp = cc_control_track_project();
+			if ( '' !== $cp ) {
+				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
+				cc_control_track_project( '' );
+			}
+			$cx->close();
+			return $e->wp_error;
+		} catch ( Throwable $e ) {
+			$cp = cc_control_track_project();
+			if ( '' !== $cp ) {
+				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
+				cc_control_track_project( '' );
+			}
+			$cx->close();
+			return new WP_Error( 'cc_assembly_err', $e->getMessage() );
+		}
+	}
+
 	// YouTube: unduh video + caption SEKALI sebelum semua segmen.
 	if ( cc_control_is_yt( $p['file'] ?? '' ) ) {
 		try {
@@ -819,6 +859,50 @@ function cc_control_run( $job ) {
 			$cx->close();
 			return $e->wp_error;
 		}
+	}
+
+	// Auto-Whisper untuk video lokal (atau YT tanpa caption) bila belum ada .srt:
+	if ( empty( $p['srt'] ) && empty( $p['yt_srt'] ) && 'none' !== ( $p['cap_lang'] ?? 'id' ) && ! empty( $p['file'] ) && file_exists( (string) $p['file'] ) && function_exists( 'cc_assembly_ensure_srt' ) ) {
+		$need_stt = ( 'moments' === ( $p['mode'] ?? 'manual' ) ) || ( 'broll' === ( $p['workflow'] ?? 'clip' ) );
+		if ( $need_stt ) {
+			$wsrt = cc_assembly_ensure_srt( (string) $p['file'], (string) ( $p['cap_lang'] ?? 'id' ), '', '' );
+			if ( ! is_wp_error( $wsrt ) && '' !== trim( $wsrt ) ) {
+				$tmp_srt = cc_ws_tmp() . 'auto-' . md5( (string) $p['file'] ) . '.srt';
+				@file_put_contents( $tmp_srt, $wsrt );
+				$p['yt_srt'] = $tmp_srt;
+			}
+		}
+	}
+
+	// Mode 'broll': pindai katalog B-Roll & SFX sekali sebelum loop segmen.
+	$broll_catalog = array( 'brolls' => array(), 'sfxs' => array() );
+	if ( 'broll' === ( $p['workflow'] ?? 'clip' ) && ! empty( $p['broll_dir'] ) && function_exists( 'cc_assembly_catalog_dir' ) ) {
+		try {
+			$broll_catalog = $step(
+				'Memindai koleksi B-Roll' . ( ! empty( $p['broll_vision'] ) ? ' (+ AI Vision)' : '' ) . ( ! empty( $p['sfx_dir'] ) ? ' & SFX' : '' ),
+				function () use ( $p ) {
+					$br = cc_assembly_catalog_dir( (string) $p['broll_dir'], 'broll', ! empty( $p['broll_vision'] ) );
+					if ( is_wp_error( $br ) ) {
+						return $br;
+					}
+					if ( empty( $br ) ) {
+						return new WP_Error( 'cc_broll_empty', 'Tidak ada file video di folder B-Roll: ' . $p['broll_dir'] );
+					}
+					$sf = array();
+					if ( ! empty( $p['sfx_dir'] ) ) {
+						$s = cc_assembly_catalog_dir( (string) $p['sfx_dir'], 'sfx', false );
+						if ( ! is_wp_error( $s ) ) {
+							$sf = $s;
+						}
+					}
+					return array( 'brolls' => $br, 'sfxs' => $sf );
+				}
+			);
+		} catch ( CC_Control_Abort $e ) {
+			$cx->close();
+			return $e->wp_error;
+		}
+		$p['_broll_catalog'] = $broll_catalog;
 	}
 
 	// Mode momen: AI memilih segmen terbaik dari transkrip + metadata.
@@ -1266,6 +1350,36 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				? cc_control_srt_remap( $raw, $keeps )
 				: cc_control_srt_slice( $raw, (float) $p['start'], (float) $p['end'] );
 		}
+
+		/* 4a3. Mode 'broll' — AI Director menyusun & memasang B-Roll + SFX di atas talking head */
+		if ( 'broll' === ( $p['workflow'] ?? 'clip' ) && ! empty( $p['_broll_catalog']['brolls'] ) && function_exists( 'cc_assembly_plan_edl' ) ) {
+			$cat = $p['_broll_catalog'];
+			$edl = $step(
+				'AI Director menyusun B-Roll (' . count( $cat['brolls'] ) . ' bahan video)',
+				function () use ( $cx, $project, $srt_txt, $cat, $p ) {
+					$span = cc_assembly_timeline_main_span( $cx, $project );
+					return cc_assembly_plan_edl(
+						$srt_txt,
+						(float) $span['duration'],
+						$cat['brolls'],
+						$cat['sfxs'],
+						array(
+							'workflow' => 'broll',
+							'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
+							'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
+						)
+					);
+				}
+			);
+			if ( ! empty( $edl ) ) {
+				$step(
+					'Memasang ' . count( $edl ) . ' klip B-Roll & SFX ke timeline',
+					function () use ( $cx, $project, $edl, $cat ) {
+						return cc_assembly_apply_edl( $cx, $project, $edl, $cat['brolls'], $cat['sfxs'], 'broll' );
+					}
+				);
+			}
+		}
 		if ( '' !== trim( $srt_txt ) ) {
 			$tid = cc_message_add( $session_id, 'task', 'Menambahkan subtitle', array( 'tool' => 'control', 'status' => 'running', 'progress' => 0 ), 'running' );
 			$st  = cc_control_caption_style( $cx, $project );
@@ -1444,7 +1558,7 @@ function cc_control_folder( $path ) {
 	if ( ! is_dir( $path ) ) {
 		return new WP_Error( 'cc_path', 'Folder tidak ditemukan.' );
 	}
-	$exts  = array( 'mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mp3', 'wav', 'aac', 'jpg', 'jpeg', 'png' );
+	$exts  = array( 'mp4', 'mov', 'mkv', 'webm', 'avi', 'm4v', 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac', 'srt', 'jpg', 'jpeg', 'png' );
 	$dirs  = array();
 	$files = array();
 	foreach ( (array) scandir( $path ) as $f ) {
