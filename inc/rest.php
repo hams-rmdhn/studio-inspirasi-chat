@@ -356,6 +356,16 @@ function cc_rest_templates_rename( WP_REST_Request $request ) {
 	if ( ! @rename( $path, $new ) ) {
 		return new WP_Error( 'cc_tpl_rename', 'Gagal rename template.' );
 	}
+	// Nama internal di template.json ikut diubah — template.list membacanya
+	// dari sini, bukan dari nama folder.
+	$jfile = trailingslashit( $new ) . 'template.json';
+	if ( file_exists( $jfile ) ) {
+		$d = json_decode( (string) file_get_contents( $jfile ), true );
+		if ( is_array( $d ) ) {
+			$d['name'] = $name;
+			file_put_contents( $jfile, wp_json_encode( $d, JSON_UNESCAPED_SLASHES | JSON_UNESCAPED_UNICODE ) );
+		}
+	}
 	return rest_ensure_response( array( 'ok' => true, 'path' => $new ) );
 }
 
