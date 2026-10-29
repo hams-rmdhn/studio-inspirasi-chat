@@ -88,6 +88,7 @@ class CC_Tools {
 			array( 'template_instantiate', 'Buat proyek baru dari template di workspace — struktur timeline, ukuran, media, dan overlay ikut terbawa. fills = array pengisian slot placeholder (boleh kosong).', $req( array( 'template' => array( 'type' => 'string', 'description' => 'Path template dari template_list' ), 'name' => array( 'type' => 'string', 'description' => 'Nama proyek baru' ), 'fills' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ) ) ), array( 'template', 'name', 'fills' ) ) ),
 			array( 'template_save', 'Simpan proyek sebagai template baru.', $req( array( 'project' => $path, 'name' => array( 'type' => 'string', 'description' => 'Nama template' ) ), array( 'project', 'name' ) ) ),
 			array( 'replace_clip_media', 'Ganti media sebuah clip dengan file baru — clip mempertahankan posisi, trim, dan efeknya. Pakai untuk mengisi clip utama hasil template dengan video baru.', $req( array( 'project' => $path, 'clip' => array( 'type' => 'string', 'description' => 'Id clip dari timeline_read' ), 'file' => $path ), array( 'project', 'clip', 'file' ) ) ),
+			array( 'control_run', 'Jalankan pipeline penuh seperti form Control: buat proyek dari template (atau proyek baru), ganti media utama dengan file/URL YouTube, potong segmen, caption, lalu simpan & serah atau export — satu proyek per segmen/momen. Pakai bila user meminta "buat video/reels" secara batch. mode=moments → AI memilih momen terbaik dari transkrip.', $req( array( 'file' => array( 'type' => 'string', 'description' => 'Path file video lokal atau URL YouTube' ), 'template' => array( 'type' => 'string', 'description' => 'Path template dari template_list — kosong = proyek baru' ), 'name' => array( 'type' => 'string', 'description' => 'Basis nama proyek' ), 'mode' => array( 'type' => 'string', 'enum' => array( 'manual', 'moments' ), 'description' => 'manual pakai segments; moments AI pilih momen' ), 'segments' => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{start,end,title?} detik' ) ), 'moment_count' => array( 'type' => 'integer' ), 'moment_min' => array( 'type' => 'integer' ), 'moment_max' => array( 'type' => 'integer' ), 'action' => array( 'type' => 'string', 'enum' => array( 'handoff', 'export' ), 'description' => 'handoff simpan & serah; export render mp4' ) ), array( 'file' ) ) ),
 			array( 'list_folder', 'Daftar file media dalam sebuah folder lokal (baca saja, dibatasi folder yang diizinkan).', $req( array( 'path' => $path ), array( 'path' ) ) ),
 			array( 'probe_file', 'Info detail sebuah file media (durasi, resolusi, dsb.).', $req( array( 'path' => $path ), array( 'path' ) ) ),
 			array( 'create_project', 'Buat proyek Studio Inspirasi baru di workspace. Mengembalikan path folder proyek — simpan untuk langkah berikutnya.', $req( array( 'name' => array( 'type' => 'string', 'description' => 'Nama proyek' ) ), array( 'name' ) ) ),
@@ -215,6 +216,9 @@ class CC_Tools {
 				case 'export_status':
 					return self::out( self::cx( $ctx )->call( 'export.status', array( 'job' => $args['job'] ?? '' ) ) );
 
+				case 'control_run':
+					return self::out( self::control_run( $ctx, $args ) );
+
 				case 'copy_result':
 					return self::out( self::copy_result( $args['source'] ?? '', $args['dest_dir'] ?? '' ) );
 			}
@@ -226,6 +230,32 @@ class CC_Tools {
 
 	private static function cx( &$ctx ) {
 		return $ctx['cx'];
+	}
+
+	/** Jalankan pipeline control penuh dari pesan chat — antre job control_run. */
+	private static function control_run( $ctx, $args ) {
+		if ( ! function_exists( 'cc_control_enqueue' ) ) {
+			return new WP_Error( 'cc_ctl', 'Pipeline control tidak tersedia.' );
+		}
+		$p = array(
+			'session_id'    => (int) ( $ctx['session_id'] ?? 0 ),
+			'file'          => (string) ( $args['file'] ?? '' ),
+			'src'           => ! empty( $args['template'] ) ? 'template' : 'baru',
+			'template'      => (string) ( $args['template'] ?? '' ),
+			'template_label' => basename( (string) ( $args['template'] ?? '' ) ),
+			'name'          => (string) ( $args['name'] ?? '' ),
+			'mode'          => 'moments' === ( $args['mode'] ?? '' ) ? 'moments' : 'manual',
+			'segments'      => (array) ( $args['segments'] ?? array() ),
+			'moment_count'  => (int) ( $args['moment_count'] ?? 3 ),
+			'moment_min'    => (int) ( $args['moment_min'] ?? 30 ),
+			'moment_max'    => (int) ( $args['moment_max'] ?? 90 ),
+			'action'        => 'export' === ( $args['action'] ?? '' ) ? 'export' : 'handoff',
+		);
+		$r = cc_control_enqueue( $p );
+		if ( is_wp_error( $r ) ) {
+			return self::err( $r );
+		}
+		return array( 'ok' => true, 'job_id' => $r['job_id'], 'note' => 'Pipeline diantrekan — task cards muncul saat berjalan.' );
 	}
 
 	/* -------------------------------------------------------------

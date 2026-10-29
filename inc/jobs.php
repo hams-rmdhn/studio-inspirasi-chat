@@ -209,6 +209,7 @@ function cc_task_label( $tool, $args ) {
 		'template_instantiate' => 'Membuat proyek dari template',
 		'template_save'  => 'Menyimpan template',
 		'replace_clip_media' => 'Mengganti media ' . basename( (string) ( $args['file'] ?? 'clip' ) ),
+		'control_run'    => 'Menjalankan pipeline control (' . ( 'moments' === ( $args['mode'] ?? '' ) ? 'momen AI' : 'manual' ) . ')',
 		'list_folder'    => 'Memindai folder ' . basename( (string) ( $args['path'] ?? '' ) ),
 		'probe_file'     => 'Membaca info file ' . basename( (string) ( $args['path'] ?? '' ) ),
 		'create_project' => 'Membuat proyek "' . ( $args['name'] ?? '' ) . '"',
