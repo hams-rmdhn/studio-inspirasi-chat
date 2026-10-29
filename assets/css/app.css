@@ -491,36 +491,28 @@ body {
 .cc-field > .cc-btn-ghost { margin-top: .5rem; align-self: flex-start; }
 .cc-btn-sm { padding: .35rem .8rem; font-size: .74rem; display: inline-flex; align-items: center; gap: .3rem; }
 
-/* Wizard steps (Control) */
-.cc-steps { display: flex; gap: .4rem; margin-bottom: 1rem; }
+/* Wizard steps (Control) — ritme proporsional, tanpa double gap+margin */
+.cc-ctl-card { max-width: 31rem; padding: 1.5rem 1.7rem; gap: 1rem; }
+.cc-steps {
+	display: flex; gap: .35rem; padding-bottom: .9rem;
+	border-bottom: 1px solid var(--cc-border); margin-bottom: .2rem;
+}
 .cc-step {
-	font-size: .7rem; font-weight: 600; padding: .2rem .6rem; border-radius: 999px;
+	font-size: .74rem; font-weight: 600; padding: .3rem .75rem; border-radius: 999px;
 	background: var(--cc-hover); color: var(--cc-muted); cursor: pointer;
+	transition: background .15s, color .15s;
 }
 .cc-step-on { background: var(--cc-primary); color: #fff; }
-.cc-step-done { background: var(--cc-border); color: var(--cc-text); }
-
-/* Spacing lega — Control wizard */
-.cc-ctl-card { padding: 1.9rem 2.1rem; gap: 1.7rem; }
-.cc-field > span { margin-bottom: .65rem; }
-.cc-filerow { gap: .7rem; margin: .4rem 0; }
-.cc-segrow { margin: .8rem 0; }
-.cc-segrow + .cc-btn { margin-top: .8rem; }
-.cc-sec { padding-top: 1.3rem; margin-bottom: .9rem; }
-.cc-steps { margin-bottom: 1.5rem; }
-.cc-radio { padding: .55rem 0; }
-.cc-ctl-act { margin-top: .8rem; }
-.cc-note { line-height: 1.5; }
-
-/* Perbaikan utama: tiap langkah wizard punya flex+gap sendiri
-   (sebelumnya gap cc-ctl-card tidak menjangkau isi dalam div x-show) */
-.cc-ctl-card > div[x-show] {
-	display: flex; flex-direction: column; gap: 1.5rem;
-}
-.cc-field + .cc-field { margin-top: 1.4rem; }
-.cc-note { display: block; margin-top: .45rem; }
+.cc-step-done { background: rgba(5,150,105,.12); color: var(--cc-primary); }
+.cc-ctl-card > div[x-show] { display: flex; flex-direction: column; gap: 1rem; }
+.cc-ctl-card .cc-sec { display: none; } /* step pill sudah jadi judul */
+.cc-ctl-card .cc-tabs { border-bottom: 0; padding-bottom: 0; }
+.cc-field > span { margin-bottom: .38rem; }
+.cc-note { display: block; margin-top: .3rem; line-height: 1.45; }
+.cc-filerow { gap: .55rem; margin: .25rem 0; }
+.cc-segrow { margin: .45rem 0; }
 .cc-ctl-act {
-	padding-top: 1.2rem; margin-top: .6rem;
+	padding-top: 1rem; margin-top: .2rem;
 	border-top: 1px solid var(--cc-border);
 	justify-content: space-between;
 }
