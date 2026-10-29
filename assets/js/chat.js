@@ -56,7 +56,8 @@ function ccChat() {
 			try { this.mode = localStorage.getItem('cc_mode') === 'control' ? 'control' : 'chat'; } catch (e) {}
 			this._seenAtOpen = Date.now();
 			this.loadStatus();
-tttif (this.mode === 'control') { this.loadTemplates(); }			this.loadSessions();
+			if (this.mode === 'control') { this.loadTemplates(); }
+			this.loadSessions();
 			setInterval(() => { this.pollMessages(); this.loadSessions(); }, 3000);
 			setInterval(() => { this.loadStatus(); }, 60000);
 			this.$nextTick(() => this.icons());
