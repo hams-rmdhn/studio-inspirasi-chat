@@ -436,6 +436,15 @@ function cc_control_srt_remap( $srt, $keeps ) {
 	return $out ? implode( "\n\n", $out ) . "\n" : '';
 }
 
+/** Lacak proyek yang sedang terbuka — untuk project.close saat gagal. */
+function cc_control_track_project( $path = null ) {
+	static $cur = '';
+	if ( null !== $path ) {
+		$cur = (string) $path;
+	}
+	return $cur;
+}
+
 /** Style + caption milik template di proyek hasil instantiate — untuk dihapus/replace. */
 function cc_control_caption_style( $cx, $project ) {
 	$g  = $cx->call( 'project.get', array( 'path' => $project ), 15 );
@@ -896,6 +905,12 @@ function cc_control_run( $job ) {
 		} catch ( Throwable $e ) {
 			$errors[] = '**' . $sp['name'] . '** gagal — ' . $e->getMessage();
 		}
+		// Lepas lock Remote API — proyek yang gagal tidak tersangkut terbuka.
+		$cp = cc_control_track_project();
+		if ( '' !== $cp ) {
+			$cx->call( 'project.close', array( 'path' => $cp ), 15 );
+			cc_control_track_project( '' );
+		}
 	}
 	$cx->close();
 	if ( ! $bodies && $errors ) {
@@ -965,6 +980,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			}
 		);
 		$project = wp_normalize_path( (string) $project );
+		cc_control_track_project( $project );
 
 		/* 2-3. Media masuk ke timeline — jalur template vs proyek baru */
 		if ( ! empty( $p['template'] ) ) {
@@ -1204,7 +1220,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 					}
 					foreach ( array_reverse( $gaps ) as $g ) {
 						foreach ( array( $g[1], $g[0] ) as $b ) {
-							$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'splitClips', 'clipIds' => array( $cid ), 'at' => $home + ( $b - $start ) ) ), 30 );
+							$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'splitClips', 'clipIds' => array( $cid ), 'time' => $home + ( $b - $start ) ) ), 30 );
 							if ( is_wp_error( $r ) ) {
 								return $r;
 							}
@@ -1314,6 +1330,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				'Menutup proyek (serah ke Studio Inspirasi)',
 				function () use ( $cx, $project ) {
 					$r = $cx->call( 'project.close', array( 'path' => $project ), 15 );
+					cc_control_track_project( '' );
 					return is_wp_error( $r ) ? $r : true;
 				}
 			);
