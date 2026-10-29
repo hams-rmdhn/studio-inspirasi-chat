@@ -234,11 +234,6 @@ get_header();
 			</div>
 		</div>
 
-		<!-- Jump to latest -->
-		<button x-show="showJump && mode === 'chat'" x-cloak type="button" @click="jumpBottom()" class="cc-jump" title="Lompat ke pesan terbaru" aria-label="Ke bawah">
-			<i data-lucide="arrow-down" class="w-4 h-4"></i>
-		</button>
-
 		<!-- Composer -->
 		<footer class="cc-composer" x-show="mode === 'chat'">
 			<p x-show="error" x-cloak x-text="error" class="cc-err"></p>

@@ -499,14 +499,8 @@ function ccChat() {
 
 		jumpBottom() {
 			const t = this.threadEl();
-			const go = () => {
-				const last = t ? (t.querySelector('.cc-thread-in > *:last-child') || t.lastElementChild) : null;
-				if (last) { last.scrollIntoView({ behavior: 'smooth', block: 'end' }); }
-				if (t) { t.scrollTop = t.scrollHeight; }
-				window.scrollTo(0, document.documentElement.scrollHeight);
-			};
-			go();
-			setTimeout(() => { go(); this.updateJump(); }, 350);
+			if (!t) { return; }
+			t.scrollTo({ top: t.scrollHeight, behavior: 'smooth' });
 		},
 		scrollToLastUser() {
 			const t = this.threadEl();
