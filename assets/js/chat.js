@@ -491,11 +491,11 @@ function ccChat() {
 		jumpBottom() {
 			const t = this.threadEl();
 			if (!t) { return; }
-			// Konten bisa masih memuat (typing/gambar) — scroll ulang supaya
-			// benar-benar sampai bawah dengan animasi halus.
-			t.scrollTo({ top: t.scrollHeight, behavior: 'smooth' });
-			setTimeout(() => { t.scrollTo({ top: t.scrollHeight, behavior: 'smooth' }); }, 350);
-			setTimeout(() => { t.scrollTop = t.scrollHeight; this.updateJump(); }, 700);
+			// scrollIntoView ke pesan terakhir — menelusuri container scroll mana
+			// pun yang sebenarnya; scrollTo langsung sebagai cadangan.
+			const last = t.querySelector('.cc-thread-in > *:last-child') || t.lastElementChild;
+			if (last) { last.scrollIntoView({ behavior: 'smooth', block: 'end' }); }
+			setTimeout(() => { t.scrollTop = t.scrollHeight; this.updateJump(); }, 500);
 		},
 		scrollToLastUser() {
 			const t = this.threadEl();

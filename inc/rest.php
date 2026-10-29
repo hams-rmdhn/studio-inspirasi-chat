@@ -360,6 +360,9 @@ function cc_rest_templates_delete( WP_REST_Request $request ) {
 	if ( is_wp_error( $path ) ) {
 		return $path;
 	}
+	if ( ! is_dir( $path ) ) {
+		return new WP_Error( 'cc_tpl_dir', 'Folder template tidak ditemukan: ' . basename( $path ) );
+	}
 	// Hapus rekursif — hanya di dalam folder templates (sudah divalidasi).
 	$it = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $path, FilesystemIterator::SKIP_DOTS ), RecursiveIteratorIterator::CHILD_FIRST );
 	foreach ( $it as $f ) {
