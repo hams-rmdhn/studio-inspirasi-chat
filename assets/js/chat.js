@@ -338,7 +338,7 @@ function ccChat() {
 			notice: '', noticeOk: false,
 			testResult: { openai: null, concat: null },
 			keySet: false, tokenSet: false, automation: '', providers: {},
-			templates: [], renaming: '', renameVal: '',
+			templates: [], renaming: '', renameVal: '', confirm: '', confirmCb: null,
 			f: { ai_provider: 'openai', ai_key: '', ai_model: '', ai_baseurl: '', openai_key: '', openai_model: '', openai_prompt: '', concat_mode: 'auto', concat_addr: '', concat_token: '', workspace: '', copy_roots: '', max_iter: 15 },
 		},
 
@@ -395,12 +395,19 @@ function ccChat() {
 				await this.loadTemplates();
 			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
 		},
+		askConfirm(msg, cb) { this.st.confirm = msg; this.st.confirmCb = cb; this.$nextTick(() => this.icons()); },
+		confirmYes() {
+			const cb = this.st.confirmCb;
+			this.st.confirm = ''; this.st.confirmCb = null;
+			if (cb) { cb(); }
+		},
 		async deleteTemplate(t) {
-			if (!confirm('Hapus template "' + t.name + '"? Tidak bisa dikembalikan.')) { return; }
-			try {
-				await ccPost('/settings/templates/delete', { path: t.path });
-				await this.loadTemplates();
-			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
+			this.askConfirm('Hapus template "' + t.name + '"? Tidak bisa dikembalikan.', async () => {
+				try {
+					await ccPost('/settings/templates/delete', { path: t.path });
+					await this.loadTemplates();
+				} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
+			});
 		},
 
 		async testConn(which) {

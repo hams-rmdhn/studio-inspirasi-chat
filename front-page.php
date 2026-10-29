@@ -268,6 +268,21 @@ get_header();
 		</footer>
 	</main>
 
+	<!-- ============ MODAL: KONFIRMASI UMUM ============ -->
+	<div x-show="st.confirm" x-cloak class="cc-ovl" x-transition.opacity @click.self="st.confirm = ''" @keydown.escape.window="st.confirm = ''">
+		<div class="cc-modal">
+			<h3 class="cc-modal-title">Konfirmasi</h3>
+			<p class="cc-note" x-text="st.confirm"></p>
+			<div class="cc-modal-act">
+				<span class="cc-flex1"></span>
+				<button type="button" @click="st.confirm = ''" class="cc-btn cc-btn-ghost">Batal</button>
+				<button type="button" @click="confirmYes()" class="cc-btn cc-btn-danger">
+					<i data-lucide="check" class="w-3.5 h-3.5"></i> Ya, lanjutkan
+				</button>
+			</div>
+		</div>
+	</div>
+
 	<!-- ============ MODAL: RENAME / HAPUS ============ -->
 	<div x-show="modal.open" x-cloak class="cc-ovl" x-transition.opacity @click.self="modal.open = false" @keydown.escape.window="modal.open = false">
 		<div class="cc-modal">
