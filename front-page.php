@@ -269,7 +269,7 @@ get_header();
 	</main>
 
 	<!-- ============ MODAL: KONFIRMASI UMUM ============ -->
-	<div x-show="st.confirm" x-cloak class="cc-ovl" x-transition.opacity @click.self="st.confirm = ''" @keydown.escape.window="st.confirm = ''">
+	<div x-show="st.confirm" x-cloak class="cc-ovl" style="z-index: 60" x-transition.opacity @click.self="st.confirm = ''" @keydown.escape.window="st.confirm = ''">
 		<div class="cc-modal">
 			<h3 class="cc-modal-title">Konfirmasi</h3>
 			<p class="cc-note" x-text="st.confirm"></p>
