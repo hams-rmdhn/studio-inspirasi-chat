@@ -30,7 +30,7 @@ get_header();
 					@drop.prevent="sessDrop(i)"
 					@dragend="sessDragEnd()">
 					<button type="button" @click="openSession(s.id)" class="cc-sess-btn">
-						<span class="truncate" x-text="s.title"></span>
+						<span class="truncate" x-text="s.title.replace(/-/g,' ')"></span>
 						<span x-show="s.active" x-cloak class="cc-spin-dot" title="Sedang bekerja"></span>
 					</button>
 					<button type="button" @click="openRename(s)" class="cc-sess-act" title="Rename / hapus" aria-label="Rename / hapus">
@@ -86,7 +86,7 @@ get_header();
 					<select x-model="ctl.f.template" class="cc-input" @change="ctlTemplateChange()">
 						<option value="">— pilih template —</option>
 						<template x-for="t in ctl.templates" :key="t.path">
-							<option :value="t.path" x-text="t.name + ' · ' + t.width + '×' + t.height"></option>
+							<option :value="t.path" x-text="t.name.replace(/-/g,' ') + ' · ' + t.width + '×' + t.height"></option>
 						</template>
 					</select>
 					<small class="cc-note" x-show="ctl.tplError" x-cloak x-text="ctl.tplError"></small>
