@@ -361,7 +361,7 @@ body {
 .cc-field { display: block; }
 .cc-field > span {
 	display: flex; align-items: center; gap: .45rem;
-	font-size: .74rem; font-weight: 600; color: var(--cc-muted); margin-bottom: .3rem;
+	font-size: .74rem; font-weight: 600; color: var(--cc-muted); margin-bottom: .5rem;
 }
 .cc-tag {
 	font-style: normal; font-size: .62rem; font-weight: 700;
@@ -434,8 +434,8 @@ body {
 .cc-ctl-card {
 	width: 100%; max-width: 36rem;
 	background: var(--cc-panel); border: 1px solid var(--cc-border);
-	border-radius: 1.25rem; padding: 1.4rem 1.5rem;
-	display: flex; flex-direction: column; gap: 1rem;
+	border-radius: 1.25rem; padding: 1.6rem 1.7rem;
+	display: flex; flex-direction: column; gap: 1.35rem;
 }
 .cc-filerow { display: flex; gap: .5rem; align-items: center; }
 .cc-filerow .cc-input { flex: 1; }
@@ -445,7 +445,7 @@ body {
 .cc-radio {
 	display: flex; align-items: center; gap: .5rem;
 	font-size: .82rem; color: var(--cc-text); cursor: pointer;
-	padding: .35rem 0;
+	padding: .45rem 0;
 }
 .cc-radio input { accent-color: var(--cc-primary); margin: 0; }
 .cc-ctl-act { display: flex; align-items: center; gap: .9rem; margin-top: .2rem; }
@@ -485,7 +485,7 @@ body {
 }
 
 /* ---------- segment rows ---------- */
-.cc-segrow { margin: .4rem 0; }
+.cc-segrow { margin: .6rem 0; }
 .cc-segrow + .cc-btn { margin-top: .4rem; }
 .cc-segrow .cc-input { text-align: center; }
 .cc-field > .cc-btn-ghost { margin-top: .5rem; align-self: flex-start; }
