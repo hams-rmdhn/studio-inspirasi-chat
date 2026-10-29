@@ -1162,12 +1162,13 @@ function cc_control_templates() {
 	$cx   = new CC_Concat();
 	$con  = $cx->connect();
 	if ( is_wp_error( $con ) ) {
-		return $con;
+		// Socket sibuk/gagal — sajikan cache terakhir alih-alih list kosong.
+		return is_array( $cached ) ? $cached : $con;
 	}
 	$out = $cx->call( 'template.list', array(), 15 );
 	$cx->close();
 	if ( is_wp_error( $out ) ) {
-		return $out;
+		return is_array( $cached ) ? $cached : $out;
 	}
 	$out['ts'] = time();
 	set_transient( 'cc_tpl_probe', $out, 300 );
