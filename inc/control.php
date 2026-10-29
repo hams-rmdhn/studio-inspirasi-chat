@@ -564,8 +564,13 @@ function cc_control_pick_moments( $srt_path, $meta, $count, $min, $max ) {
 		$hint .= "Titik paling sering diulang penonton (detik): " . implode( ', ', array_map( function ( $h ) { return round( $h['start'] ); }, $meta['heatmap'] ) ) . "\n";
 	}
 
+	$custom = trim( (string) get_option( 'cc_moments_prompt', '' ) );
+	$sys    = 'Kamu editor video. Balas HANYA JSON array [{"start":angka_detik,"end":angka_detik,"title":"judul-pendek"}]. Waktu SELALU dalam detik murni (contoh: 2 menit 12 detik = 132), bukan format menit.detik.';
+	if ( '' !== $custom ) {
+		$sys .= "\n\nKriteria pemilihan momen dari user:\n" . $custom;
+	}
 	$msgs = array(
-		array( 'role' => 'system', 'content' => 'Kamu editor video. Balas HANYA JSON array [{"start":angka_detik,"end":angka_detik,"title":"judul-pendek"}]. Waktu SELALU dalam detik murni (contoh: 2 menit 12 detik = 132), bukan format menit.detik.' ),
+		array( 'role' => 'system', 'content' => $sys ),
 		array(
 			'role'    => 'user',
 			'content' => "Pilih {$count} momen terbaik dari video ini untuk reel vertikal. Tiap segmen {$min}-{$max} detik, tidak overlap, urut kronologis. start/end HARUS di batas kalimat selesai (jangan potong di tengah kalimat). Prioritaskan isi paling menarik/poin kuat"

@@ -84,8 +84,15 @@ function cc_default_prompt() {
 		. 'Bila user menyebut template atau struktur yang dipakai berulang, gunakan template_list + template_instantiate daripada menyusun timeline dari nol. '
 		. 'Untuk mengganti video pada clip hasil template, pakai replace_clip_media — posisi dan trim clip dipertahankan. '
 		. 'Untuk beberapa edit yang berkaitan, gabungkan dalam satu panggilan edit_apply. '
+		. 'Untuk animasi masuk/keluar visual sebuah clip, patch visualMotion via edit_apply → updateClip {clipId, patch:{visualMotion:{entrance:0-3, exit:0-3, duration:detik}}} (0=none,1=fade,2=slide,3=pop). '
 		. 'Hanya satu export dalam satu waktu; bila export ditolak busy, jelaskan ke user bahwa ada export lain berjalan. '
 		. 'Hasil akhir selalu ditulis ke workspace lalu disalin ke folder tujuan yang user minta dengan copy_result — tolak sopan bila folder tujuan di luar daftar yang diizinkan. '
+		. 'Untuk produksi video otomatis dari bahan, SELALU pakai control_run (jangan menyusun timeline manual dengan addClip berulang kali). Ada 3 workflow: '
+		. '(1) workflow=clip — potong 1 video (file lokal atau URL YouTube) jadi klip pendek: mode manual (segments) atau mode moments (AI pilih momen dari transkrip, butuh moment_count/min/max). '
+		. '(2) workflow=broll — video utama talking head + sisipan B-Roll otomatis: wajib file (video utama) + broll_dir (folder video B-Roll); opsional sfx_dir (folder audio transisi), silence_cut untuk rapatkan jeda, broll_pacing (calm/dynamic/sentence), broll_motion (none/fade/slide/pop — default slide, exit selalu fade 0.3s), broll_vision (scan visual tiap klip), broll_prompt (arahan bebas). '
+		. '(3) workflow=assembly — rakit video penuh dari Voice Over: wajib vo_file (audio MP3/WAV penentu durasi) + broll_dir; SFX/pacing/motion/prompt sama seperti broll. '
+		. 'Jika permintaan menyebut "b-roll", "sisipkan klip", "tampilkan visual pendukung" → workflow=broll; jika menyebut "voice over", "narasi MP3", "rakit dari bahan/audio" → workflow=assembly; jika hanya potong momen/segmen → workflow=clip. '
+		. 'Bila user tidak menyebut folder B-Roll/VO, TANYA dulu path foldernya — jangan mengarang path. '
 		. 'Laporkan langkah penting ke user secara singkat di jawaban akhir.';
 }
 
