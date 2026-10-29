@@ -337,8 +337,8 @@ function ccChat() {
 			open: false, tab: 'openai', saving: false, testing: '',
 			notice: '', noticeOk: false,
 			testResult: { openai: null, concat: null },
-			keySet: false, tokenSet: false, automation: '',
-			f: { openai_key: '', openai_model: '', openai_prompt: '', concat_mode: 'auto', concat_addr: '', concat_token: '', workspace: '', copy_roots: '', max_iter: 15 },
+			keySet: false, tokenSet: false, automation: '', providers: {},
+			f: { ai_provider: 'openai', ai_key: '', ai_model: '', ai_baseurl: '', openai_key: '', openai_model: '', openai_prompt: '', concat_mode: 'auto', concat_addr: '', concat_token: '', workspace: '', copy_roots: '', max_iter: 15 },
 		},
 
 		async openSettings() {
@@ -346,12 +346,14 @@ function ccChat() {
 			this.st.notice = '';
 			try {
 				const d = await ccApi('GET', '/settings');
-				this.st.keySet = !!d.openai_key_set;
+				this.st.keySet = !!d.ai_key_set;
+				this.st.providers = d.ai_providers || {};
 				this.st.tokenSet = !!d.concat_token_set;
 				this.st.automation = d.automation && d.automation.ok
 					? 'automation.json terdeteksi — ' + d.automation.address
 					: ((d.automation && d.automation.error) || 'automation.json tidak ditemukan.');
 				this.st.f = {
+					ai_provider: d.ai_provider || 'openai', ai_key: '', ai_model: d.ai_model || '', ai_baseurl: d.ai_baseurl || '',
 					openai_key: '', openai_model: d.openai_model || '', openai_prompt: d.openai_prompt || '',
 					concat_mode: d.concat_mode || 'auto', concat_addr: d.concat_addr || '', concat_token: '',
 					workspace: d.workspace || '', copy_roots: d.copy_roots || '', max_iter: d.max_iter || 15,
@@ -366,7 +368,7 @@ function ccChat() {
 			this.st.notice = '';
 			try {
 				await ccPost('/settings', this.st.f);
-				if (this.st.f.openai_key) { this.st.keySet = true; this.st.f.openai_key = ''; }
+				if (this.st.f.openai_key || this.st.f.ai_key) { this.st.keySet = true; this.st.f.openai_key = ''; this.st.f.ai_key = ''; }
 				if (this.st.f.concat_token) { this.st.tokenSet = true; this.st.f.concat_token = ''; }
 				this.st.notice = 'Pengaturan tersimpan.';
 				this.st.noticeOk = true;

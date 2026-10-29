@@ -66,7 +66,7 @@ function cc_openai_model() {
 }
 
 function cc_openai_configured() {
-	return '' !== cc_openai_key();
+	return function_exists( 'cc_ai_configured' ) ? cc_ai_configured() : '' !== cc_openai_key();
 }
 
 function cc_openai_prompt() {
@@ -282,8 +282,29 @@ function cc_settings_apply( $in ) {
 	update_option( 'cc_copy_roots', sanitize_textarea_field( $in['copy_roots'] ?? '' ), false );
 	update_option( 'cc_max_iter', absint( $in['max_iter'] ?? 15 ), false );
 
+	// Agen AI — provider + model/key/baseurl per provider.
+	if ( isset( $in['ai_provider'] ) ) {
+		$p = sanitize_key( (string) $in['ai_provider'] );
+		if ( function_exists( 'cc_ai_providers' ) && array_key_exists( $p, cc_ai_providers() ) ) {
+			update_option( 'cc_ai_provider', $p, false );
+		}
+	}
+	$p = function_exists( 'cc_ai_provider' ) ? cc_ai_provider() : 'openai';
+	if ( 'openai' === $p ) {
+		if ( isset( $in['ai_model'] ) ) {
+			update_option( 'cc_openai_model', sanitize_text_field( $in['ai_model'] ), false );
+		}
+	} elseif ( isset( $in['ai_model'] ) ) {
+		update_option( 'cc_ai_model_' . $p, sanitize_text_field( $in['ai_model'] ), false );
+	}
+	if ( 'custom' === $p ) {
+		update_option( 'cc_ai_custom_baseurl', sanitize_text_field( $in['ai_baseurl'] ?? '' ), false );
+	}
+	update_option( 'cc_ai_baseurl', sanitize_text_field( $in['ai_baseurl'] ?? '' ), false );
+
 	// Secret fields: empty input = keep the stored value.
-	foreach ( array( 'openai_key' => 'cc_openai_key', 'concat_token' => 'cc_concat_token' ) as $field => $option ) {
+	$key_opt = 'openai' === $p ? 'cc_openai_key' : 'cc_ai_key_' . $p;
+	foreach ( array( 'openai_key' => 'cc_openai_key', 'concat_token' => 'cc_concat_token', 'ai_key' => $key_opt ) as $field => $option ) {
 		$val = trim( (string) ( $in[ $field ] ?? '' ) );
 		if ( '' !== $val ) {
 			update_option( $option, cc_encrypt( $val ), false );

@@ -344,19 +344,29 @@ get_header();
 			</div>
 
 			<div class="cc-tabs">
-				<template x-for="t in [['openai','OpenAI'],['concat','Studio Inspirasi'],['folder','Folder']]">
+				<template x-for="t in [['ai','Agen AI'],['concat','Studio Inspirasi'],['folder','Folder']]">
 					<button type="button" @click="st.tab = t[0]" :class="st.tab === t[0] && 'cc-tab-on'" class="cc-tab" x-text="t[1]"></button>
 				</template>
 			</div>
 			<p x-show="st.notice" x-cloak x-text="st.notice" class="cc-notice" :class="st.noticeOk ? 'cc-notice-ok' : 'cc-notice-err'"></p>
 
 			<!-- TAB: OpenAI -->
-			<div x-show="st.tab === 'openai'" class="cc-tabbody">
-				<label class="cc-field"><span>API Key <em x-show="st.keySet" x-cloak class="cc-tag">tersimpan</em></span>
-					<input type="password" x-model="st.f.openai_key" class="cc-input" :placeholder="st.keySet ? '•••••••• (isi untuk mengganti)' : 'sk-…'" autocomplete="new-password">
+			<div x-show="st.tab === 'ai'" class="cc-tabbody">
+				<label class="cc-field"><span>AI Provider</span>
+					<select x-model="st.f.ai_provider" class="cc-input">
+						<template x-for="(p, k) in st.providers" :key="k">
+							<option :value="k" x-text="p.label + (p.note ? ' — ' + p.note : '')"></option>
+						</template>
+					</select>
+				</label>
+				<label class="cc-field" x-show="st.providers[st.f.ai_provider] && st.providers[st.f.ai_provider].key"><span>API Key <em x-show="st.keySet" x-cloak class="cc-tag">tersimpan</em></span>
+					<input type="password" x-model="st.f.ai_key" class="cc-input" :placeholder="st.keySet ? '•••••••• (isi untuk mengganti)' : 'sk-…'" autocomplete="new-password">
 				</label>
 				<label class="cc-field"><span>Model</span>
-					<input type="text" x-model="st.f.openai_model" class="cc-input" placeholder="gpt-4o-mini">
+					<input type="text" x-model="st.f.ai_model" class="cc-input" :placeholder="st.providers[st.f.ai_provider] ? st.providers[st.f.ai_provider].model : 'gpt-4o-mini'">
+				</label>
+				<label class="cc-field" x-show="st.f.ai_provider === 'custom'"><span>Base URL</span>
+					<input type="text" x-model="st.f.ai_baseurl" class="cc-input" placeholder="https://api.example.com/v1">
 				</label>
 				<label class="cc-field"><span>System prompt <em class="cc-tag">kosong = bawaan</em></span>
 					<textarea x-model="st.f.openai_prompt" rows="5" class="cc-input"></textarea>

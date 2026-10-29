@@ -246,6 +246,11 @@ function cc_rest_settings_get() {
 	$auto = cc_automation_read();
 	return rest_ensure_response(
 		array(
+			'ai_provider'     => function_exists( 'cc_ai_provider' ) ? cc_ai_provider() : 'openai',
+			'ai_providers'    => function_exists( 'cc_ai_providers' ) ? cc_ai_providers() : array(),
+			'ai_model'        => function_exists( 'cc_ai_model' ) ? cc_ai_model() : cc_openai_model(),
+			'ai_baseurl'      => get_option( 'cc_ai_baseurl', '' ),
+			'ai_key_set'      => cc_openai_configured(),
 			'openai_model'    => get_option( 'cc_openai_model', 'gpt-4o-mini' ),
 			'openai_prompt'   => get_option( 'cc_openai_prompt', '' ),
 			'openai_key_set'  => cc_openai_configured(),
@@ -264,7 +269,7 @@ function cc_rest_settings_get() {
 
 function cc_rest_settings_save( WP_REST_Request $request ) {
 	$in = array();
-	foreach ( array( 'openai_model', 'openai_prompt', 'concat_mode', 'concat_addr', 'workspace', 'copy_roots', 'max_iter', 'openai_key', 'concat_token' ) as $f ) {
+	foreach ( array( 'openai_model', 'openai_prompt', 'concat_mode', 'concat_addr', 'workspace', 'copy_roots', 'max_iter', 'openai_key', 'concat_token', 'ai_provider', 'ai_model', 'ai_key', 'ai_baseurl' ) as $f ) {
 		$v = $request->get_param( $f );
 		if ( null !== $v ) {
 			$in[ $f ] = $v;

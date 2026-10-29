@@ -16,6 +16,7 @@ define( 'CC_VERSION', '0.1.0' );
 require_once __DIR__ . '/inc/db.php';
 require_once __DIR__ . '/inc/settings.php';
 require_once __DIR__ . '/inc/concat.php';
+require_once __DIR__ . '/inc/ai.php';
 require_once __DIR__ . '/inc/openai.php';
 require_once __DIR__ . '/inc/tools.php';
 require_once __DIR__ . '/inc/jobs.php';
