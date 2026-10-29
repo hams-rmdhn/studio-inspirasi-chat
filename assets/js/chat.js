@@ -228,7 +228,7 @@ function ccChat() {
 			f: {
 				workflow: 'clip', src: 'template', template: '', template_label: '', aspect: '9:16',
 				file: '', vo_file: '', broll_dir: '', sfx_dir: '', broll_vision: false,
-				broll_pacing: 'calm', broll_prompt: '', broll_motion: 'slide',
+				broll_pacing: 'calm', broll_prompt: '', broll_motion_in: 'slide', broll_motion_out: 'fade',
 				mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90,
 				silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1,
 				segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff',
@@ -364,7 +364,8 @@ function ccChat() {
 					file: f.file, vo_file: f.vo_file,
 					broll_dir: f.broll_dir, sfx_dir: f.sfx_dir,
 					broll_vision: f.broll_vision ? '1' : '',
-					broll_pacing: f.broll_pacing, broll_prompt: f.broll_prompt, broll_motion: f.broll_motion,
+					broll_pacing: f.broll_pacing, broll_prompt: f.broll_prompt,
+					broll_motion_in: f.broll_motion_in, broll_motion_out: f.broll_motion_out,
 					mode: f.mode, moment_count: f.moment_count, moment_min: f.moment_min, moment_max: f.moment_max,
 					silence_cut: f.silence_cut ? '1' : '', silence_db: f.silence_db, silence_min: f.silence_min, silence_pad: f.silence_pad,
 					session_id: this.activeId || this.ctl.sessionId || 0,

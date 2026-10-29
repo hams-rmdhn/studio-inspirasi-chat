@@ -568,12 +568,13 @@ function cc_assembly_place_clip( $cx, $project, $track_id, $media_id, $media_dur
 	if ( ! empty( $opts['name'] ) ) {
 		$patch['name'] = (string) $opts['name'];
 	}
-	// Animasi entrance/exit visual: slide(2) masuk + fade(1) keluar, 0.3 detik.
-	if ( ! empty( $opts['motion'] ) ) {
-		$map = array( 'fade' => 1, 'slide' => 2, 'pop' => 3 );
-		$mv  = $map[ $opts['motion'] ] ?? 0;
-		if ( $mv > 0 ) {
-			$patch['visualMotion'] = array( 'entrance' => $mv, 'exit' => 1, 'duration' => 0.3 );
+	// Animasi entrance/exit visual — masing-masing dipilih tegas (none/fade/slide/pop).
+	if ( isset( $opts['motion_in'] ) || isset( $opts['motion_out'] ) ) {
+		$map    = array( 'none' => 0, 'fade' => 1, 'slide' => 2, 'pop' => 3 );
+		$in_id  = $map[ $opts['motion_in'] ?? 'slide' ] ?? 2;
+		$out_id = $map[ $opts['motion_out'] ?? 'fade' ] ?? 1;
+		if ( $in_id > 0 || $out_id > 0 ) {
+			$patch['visualMotion'] = array( 'entrance' => $in_id, 'exit' => $out_id, 'duration' => 0.3 );
 		}
 	}
 	if ( $patch ) {
@@ -634,7 +635,7 @@ function cc_assembly_timeline_main_span( $cx, $project ) {
  * Terapkan EDL B-Roll & SFX ke proyek untuk mode 'broll' (di atas track utama, di bawah overlay template)
  * atau mode 'assembly' (di track utama).
  */
-function cc_assembly_apply_edl( $cx, $project, $edl, $brolls, $sfxs, $workflow = 'broll', $motion = 'slide' ) {
+function cc_assembly_apply_edl( $cx, $project, $edl, $brolls, $sfxs, $workflow = 'broll', $motion_in = 'slide', $motion_out = 'fade' ) {
 	if ( empty( $edl ) ) {
 		return true;
 	}
@@ -716,7 +717,8 @@ function cc_assembly_apply_edl( $cx, $project, $edl, $brolls, $sfxs, $workflow =
 				'muted'   => true,
 				'fadeIn'  => 'broll' === $workflow ? 0.12 : 0.0,
 				'fadeOut' => 'broll' === $workflow ? 0.12 : 0.0,
-				'motion'  => (string) $motion,
+				'motion_in'  => (string) $motion_in,
+				'motion_out' => (string) $motion_out,
 				'name'    => basename( $binfo['file'] ),
 			),
 			$park_pos + ( $i * 120.0 )
@@ -955,7 +957,7 @@ function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id ) {
 			}
 
 			// Pasang seluruh B-Roll di track utama + SFX di track audio.
-			return cc_assembly_apply_edl( $cx, $project, $edl, $catalog['brolls'], $catalog['sfxs'], 'assembly', (string) ( $p['broll_motion'] ?? 'slide' ) );
+			return cc_assembly_apply_edl( $cx, $project, $edl, $catalog['brolls'], $catalog['sfxs'], 'assembly', (string) ( $p['broll_motion_in'] ?? $p['broll_motion'] ?? 'slide' ), (string) ( $p['broll_motion_out'] ?? 'fade' ) );
 		}
 	);
 

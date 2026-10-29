@@ -261,15 +261,25 @@ get_header();
 								<option value="dynamic">Dinamis & cepat (tiap 2–4 detik)</option>
 							</select>
 						</label>
-						<label class="cc-field"><span>Animasi entrance B-Roll</span>
-							<select x-model="ctl.f.broll_motion" class="cc-input">
-								<option value="slide">Slide — geser masuk dari bawah (default)</option>
-								<option value="fade">Fade — muncul memudar lembut</option>
-								<option value="pop">Pop — muncul dengan zoom cepat</option>
-								<option value="none">Tanpa animasi</option>
-							</select>
-							<small class="cc-note">Keluar selalu fade 0.3 detik. SFX & video utama tidak terpengaruh.</small>
-						</label>
+						<div class="cc-row2">
+							<label class="cc-field"><span>Animasi masuk B-Roll</span>
+								<select x-model="ctl.f.broll_motion_in" class="cc-input">
+									<option value="slide">Slide — geser masuk (default)</option>
+									<option value="fade">Fade — muncul memudar</option>
+									<option value="pop">Pop — zoom cepat</option>
+									<option value="none">Tanpa animasi</option>
+								</select>
+							</label>
+							<label class="cc-field"><span>Animasi keluar B-Roll</span>
+								<select x-model="ctl.f.broll_motion_out" class="cc-input">
+									<option value="fade">Fade — keluar memudar (default)</option>
+									<option value="slide">Slide — geser keluar</option>
+									<option value="pop">Pop — zoom keluar</option>
+									<option value="none">Tanpa animasi</option>
+								</select>
+							</label>
+						</div>
+						<small class="cc-note">Durasi animasi 0.3 detik. SFX & video utama tidak terpengaruh.</small>
 						<label class="cc-field"><span>Instruksi untuk AI Director <em class="cc-tag">opsional</em></span>
 							<textarea x-model="ctl.f.broll_prompt" rows="2" class="cc-input" placeholder="Misal: tampilkan B-roll alam saat membahas ketenangan, gunakan sfx whoosh di tiap transisi…"></textarea>
 							<small class="cc-note">B-Roll otomatis di-fit memenuhi kanvas (fill) dan audionya di-mute agar suara utama jernih.</small>

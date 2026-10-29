@@ -442,6 +442,8 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'broll_vision'  => ! empty( $request->get_param( 'broll_vision' ) ) && 'false' !== $request->get_param( 'broll_vision' ),
 		'broll_pacing'  => sanitize_key( (string) $request->get_param( 'broll_pacing' ) ),
 		'broll_motion'  => sanitize_key( (string) $request->get_param( 'broll_motion' ) ),
+		'broll_motion_in'  => sanitize_key( (string) $request->get_param( 'broll_motion_in' ) ),
+		'broll_motion_out' => sanitize_key( (string) $request->get_param( 'broll_motion_out' ) ),
 		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
 		'segments'      => array(),
 	);
@@ -451,8 +453,16 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 	if ( ! in_array( $p['broll_pacing'], array( 'calm', 'dynamic', 'sentence' ), true ) ) {
 		$p['broll_pacing'] = 'calm';
 	}
-	if ( ! in_array( $p['broll_motion'], array( 'none', 'fade', 'slide', 'pop' ), true ) ) {
-		$p['broll_motion'] = 'slide';
+	foreach ( array( 'broll_motion', 'broll_motion_in', 'broll_motion_out' ) as $mf ) {
+		if ( ! in_array( $p[ $mf ], array( 'none', 'fade', 'slide', 'pop' ), true ) ) {
+			$p[ $mf ] = '';
+		}
+	}
+	if ( '' === $p['broll_motion_in'] ) {
+		$p['broll_motion_in'] = '' !== $p['broll_motion'] ? $p['broll_motion'] : 'slide';
+	}
+	if ( '' === $p['broll_motion_out'] ) {
+		$p['broll_motion_out'] = 'fade';
 	}
 	if ( ! in_array( $p['cap_lang'], array( 'id', 'en', 'auto', 'none' ), true ) ) {
 		$p['cap_lang'] = 'id';
