@@ -491,19 +491,45 @@ body {
 .cc-field > .cc-btn-ghost { margin-top: .5rem; align-self: flex-start; }
 .cc-btn-sm { padding: .35rem .8rem; font-size: .74rem; display: inline-flex; align-items: center; gap: .3rem; }
 
-/* Wizard steps (Control) — ritme proporsional, tanpa double gap+margin */
+/* Wizard steps (Control) — numbered stepper dengan garis penghubung */
 .cc-ctl-card { max-width: 31rem; padding: 1.5rem 1.7rem; gap: 1rem; }
 .cc-steps {
-	display: flex; gap: .35rem; padding-bottom: .9rem;
+	display: flex; align-items: center; padding-bottom: 1rem;
 	border-bottom: 1px solid var(--cc-border); margin-bottom: .2rem;
 }
+.cc-step-item { display: flex; align-items: center; flex: 1; min-width: 0; }
+.cc-step-item:last-child { flex: 0 0 auto; }
 .cc-step {
-	font-size: .74rem; font-weight: 600; padding: .3rem .75rem; border-radius: 999px;
-	background: var(--cc-hover); color: var(--cc-muted); cursor: pointer;
-	transition: background .15s, color .15s;
+	display: inline-flex; align-items: center; gap: .42rem;
+	background: transparent; border: 0; padding: .2rem .1rem;
+	font: inherit; font-size: .78rem; font-weight: 600;
+	color: var(--cc-muted); cursor: pointer; white-space: nowrap;
+	transition: color .15s;
 }
-.cc-step-on { background: var(--cc-primary); color: #fff; }
-.cc-step-done { background: rgba(5,150,105,.12); color: var(--cc-primary); }
+.cc-step:hover { color: var(--cc-text); }
+.cc-step-num {
+	width: 1.45rem; height: 1.45rem; border-radius: 50%;
+	display: inline-flex; align-items: center; justify-content: center;
+	font-size: .7rem; font-weight: 700; flex-shrink: 0;
+	background: var(--cc-hover); color: var(--cc-muted);
+	border: 1.5px solid var(--cc-border);
+	transition: background .15s, color .15s, border-color .15s;
+}
+.cc-step-line {
+	flex: 1; height: 1.5px; margin: 0 .45rem; min-width: .6rem;
+	background: var(--cc-border); border-radius: 1px;
+	transition: background .2s;
+}
+.cc-step-on .cc-step { color: var(--cc-text); }
+.cc-step-on .cc-step-num {
+	background: var(--cc-primary); color: #fff; border-color: var(--cc-primary);
+	box-shadow: 0 0 0 3px rgba(5,150,105,.16);
+}
+.cc-step-done .cc-step { color: var(--cc-primary); }
+.cc-step-done .cc-step-num {
+	background: rgba(5,150,105,.14); color: var(--cc-primary); border-color: var(--cc-primary);
+}
+.cc-step-done .cc-step-line { background: var(--cc-primary); }
 .cc-ctl-card > div[x-show] { display: flex; flex-direction: column; gap: 1rem; }
 .cc-ctl-card .cc-sec { display: none; } /* step pill sudah jadi judul */
 .cc-ctl-card .cc-tabs { border-bottom: 0; padding-bottom: 0; }

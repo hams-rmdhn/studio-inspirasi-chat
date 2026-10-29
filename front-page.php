@@ -76,9 +76,18 @@ get_header();
 		<div x-show="mode === 'control'" x-cloak class="cc-ctl">
 			<div class="cc-ctl-card">
 				<!-- Indikator langkah -->
-				<div class="cc-steps">
+				<div class="cc-steps" role="list">
 					<template x-for="(lbl, i) in ['Sumber','Subtitle','Segmen','Proyek']" :key="i">
-						<span class="cc-step" :class="ctl.step === i ? 'cc-step-on' : (ctl.step > i ? 'cc-step-done' : '')" @click="ctl.step = i" x-text="lbl"></span>
+						<div class="cc-step-item" :class="ctl.step === i ? 'cc-step-on' : (ctl.step > i ? 'cc-step-done' : '')">
+							<button type="button" class="cc-step" @click="ctl.step = i">
+								<span class="cc-step-num">
+									<span x-show="ctl.step <= i" x-text="i + 1"></span>
+									<svg x-show="ctl.step > i" x-cloak viewBox="0 0 16 16" width="12" height="12" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><polyline points="3.5 8.5 6.5 11.5 12.5 4.5"/></svg>
+								</span>
+								<span class="cc-step-lbl" x-text="lbl"></span>
+							</button>
+							<span x-show="i < 3" class="cc-step-line" aria-hidden="true"></span>
+						</div>
 					</template>
 				</div>
 
