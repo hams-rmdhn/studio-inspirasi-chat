@@ -153,25 +153,25 @@ get_header();
 				<div x-show="ctl.step === 2">
 				<h4 class="cc-sec">Segmen & Potong</h4>
 				<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
-					<div class="cc-filerow" style="gap:.75rem;margin-bottom:.4rem">
-						<label class="cc-note" style="display:flex;align-items:center;gap:.3rem"><input type="radio" x-model="ctl.f.mode" value="manual"> Manual</label>
-						<label class="cc-note" style="display:flex;align-items:center;gap:.3rem"><input type="radio" x-model="ctl.f.mode" value="moments"> Otomatis — momen terbaik</label>
-					</div>
-					<div x-show="ctl.f.mode === 'moments'" class="cc-filerow" style="gap:.5rem;margin-bottom:.4rem">
-						<input type="number" x-model.number="ctl.f.moment_count" min="1" max="10" class="cc-input" style="width:4.5rem" title="Jumlah momen">
-						<span class="cc-note">momen</span>
-						<input type="number" x-model.number="ctl.f.moment_min" min="5" class="cc-input" style="width:4.5rem" title="Durasi minimum (detik)">
+					<select x-model="ctl.f.mode" class="cc-input" style="margin-bottom:.55rem">
+						<option value="manual">Manual — tentukan rentang waktu</option>
+						<option value="moments">Otomatis — momen terbaik (AI)</option>
+					</select>
+					<div x-show="ctl.f.mode === 'moments'" class="cc-inline-row">
+						<input type="number" x-model.number="ctl.f.moment_count" min="1" max="10" class="cc-input cc-input-num" title="Jumlah momen">
+						<span class="cc-note">momen · durasi</span>
+						<input type="number" x-model.number="ctl.f.moment_min" min="5" class="cc-input cc-input-num" title="Durasi minimum (detik)">
 						<span class="cc-note">–</span>
-						<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input" style="width:4.5rem" title="Durasi maksimum (detik)">
+						<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input cc-input-num" title="Durasi maksimum (detik)">
 						<span class="cc-note">detik</span>
 					</div>
 					<template x-if="ctl.f.mode === 'manual'">
 						<div>
 							<template x-for="(s, i) in ctl.f.segments" :key="i">
-								<div class="cc-filerow cc-segrow">
-									<input type="text" x-model="s.start" class="cc-input" placeholder="2:30" inputmode="numeric">
+								<div class="cc-segrow">
+									<input type="text" x-model="s.start" class="cc-input cc-input-time" placeholder="2:30" inputmode="numeric">
 									<span class="cc-note">s/d</span>
-									<input type="text" x-model="s.end" class="cc-input" placeholder="3:32" inputmode="numeric">
+									<input type="text" x-model="s.end" class="cc-input cc-input-time" placeholder="3:32" inputmode="numeric">
 									<button type="button" @click="ctl.f.segments.splice(i, 1)" x-show="ctl.f.segments.length > 1" class="cc-set" title="Hapus segmen" aria-label="Hapus segmen">
 										<i data-lucide="x" class="w-4 h-4"></i>
 									</button>
@@ -186,16 +186,16 @@ get_header();
 				</div>
 
 				<div class="cc-field"><span>Potong</span>
-					<label class="cc-note" style="display:flex;align-items:center;gap:.3rem">
+					<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
 						<input type="checkbox" x-model="ctl.f.silence_cut"> Potong jeda hening
 					</label>
-					<div x-show="ctl.f.silence_cut" class="cc-filerow" style="gap:.5rem;margin-bottom:.4rem">
-						<input type="number" x-model.number="ctl.f.silence_db" step="1" class="cc-input" style="width:4.5rem" title="Threshold dB">
+					<div x-show="ctl.f.silence_cut" class="cc-inline-row">
+						<input type="number" x-model.number="ctl.f.silence_db" step="1" class="cc-input cc-input-num" title="Threshold dB">
 						<span class="cc-note">dB ·</span>
-						<input type="number" x-model.number="ctl.f.silence_min" step="0.1" min="0.2" class="cc-input" style="width:4.5rem" title="Min hening (detik)">
-						<span class="cc-note">detik hening · padding</span>
-						<input type="number" x-model.number="ctl.f.silence_pad" step="0.05" class="cc-input" style="width:4.5rem" title="Padding (detik)">
-						<span class="cc-note">detik</span>
+						<input type="number" x-model.number="ctl.f.silence_min" step="0.1" min="0.2" class="cc-input cc-input-num" title="Min hening (detik)">
+						<span class="cc-note">s hening · pad</span>
+						<input type="number" x-model.number="ctl.f.silence_pad" step="0.05" class="cc-input cc-input-num" title="Padding (detik)">
+						<span class="cc-note">s</span>
 					</div>
 					<small class="cc-note">Buang bagian tanpa suara di tiap segmen — konten lebih rapat.</small>
 				</div>

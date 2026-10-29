@@ -536,7 +536,12 @@ body {
 .cc-field > span { margin-bottom: .38rem; }
 .cc-note { display: block; margin-top: .3rem; line-height: 1.45; }
 .cc-filerow { gap: .55rem; margin: .25rem 0; }
-.cc-segrow { margin: .45rem 0; }
+.cc-segrow, .cc-inline-row {
+	display: flex; align-items: center; gap: .5rem; margin: .45rem 0; flex-wrap: wrap;
+}
+.cc-segrow .cc-note, .cc-inline-row .cc-note { display: inline; margin: 0; }
+.cc-input-time { width: 5.5rem !important; flex: 0 0 auto !important; padding: .42rem .55rem; text-align: center; font-variant-numeric: tabular-nums; }
+.cc-input-num  { width: 4.2rem !important; flex: 0 0 auto !important; padding: .42rem .45rem; text-align: center; font-variant-numeric: tabular-nums; }
 .cc-ctl-act {
 	padding-top: 1rem; margin-top: .2rem;
 	border-top: 1px solid var(--cc-border);
