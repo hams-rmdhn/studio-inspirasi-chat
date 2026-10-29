@@ -1375,7 +1375,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				$step(
 					'Memasang ' . count( $edl ) . ' klip B-Roll & SFX ke timeline',
 					function () use ( $cx, $project, $edl, $cat ) {
-						return cc_assembly_apply_edl( $cx, $project, $edl, $cat['brolls'], $cat['sfxs'], 'broll' );
+						return cc_assembly_apply_edl( $cx, $project, $edl, $cat['brolls'], $cat['sfxs'], 'broll', (string) ( $p['broll_motion'] ?? 'slide' ) );
 					}
 				);
 			}
