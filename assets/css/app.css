@@ -499,3 +499,15 @@ body {
 }
 .cc-step-on { background: var(--cc-primary); color: #fff; }
 .cc-step-done { background: var(--cc-border); color: var(--cc-text); }
+
+/* Spacing lega — Control wizard */
+.cc-ctl-card { padding: 1.9rem 2.1rem; gap: 1.7rem; }
+.cc-field > span { margin-bottom: .65rem; }
+.cc-filerow { gap: .7rem; margin: .4rem 0; }
+.cc-segrow { margin: .8rem 0; }
+.cc-segrow + .cc-btn { margin-top: .8rem; }
+.cc-sec { padding-top: 1.3rem; margin-bottom: .9rem; }
+.cc-steps { margin-bottom: 1.5rem; }
+.cc-radio { padding: .55rem 0; }
+.cc-ctl-act { margin-top: .8rem; }
+.cc-note { line-height: 1.5; }
