@@ -133,6 +133,17 @@ get_header();
 						<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input" style="width:4.5rem" title="Durasi maksimum (detik)">
 						<span class="cc-note">detik</span>
 					</div>
+					<label class="cc-note" style="display:flex;align-items:center;gap:.3rem">
+						<input type="checkbox" x-model="ctl.f.silence_cut"> Potong jeda hening
+					</label>
+					<div x-show="ctl.f.silence_cut" class="cc-filerow" style="gap:.5rem;margin-bottom:.4rem">
+						<input type="number" x-model.number="ctl.f.silence_db" step="1" class="cc-input" style="width:4.5rem" title="Threshold dB">
+						<span class="cc-note">dB ·</span>
+						<input type="number" x-model.number="ctl.f.silence_min" step="0.1" min="0.2" class="cc-input" style="width:4.5rem" title="Min hening (detik)">
+						<span class="cc-note">detik hening · padding</span>
+						<input type="number" x-model.number="ctl.f.silence_pad" step="0.05" class="cc-input" style="width:4.5rem" title="Padding (detik)">
+						<span class="cc-note">detik</span>
+					</div>
 					<template x-if="ctl.f.mode === 'manual'">
 						<div>
 							<template x-for="(s, i) in ctl.f.segments" :key="i">

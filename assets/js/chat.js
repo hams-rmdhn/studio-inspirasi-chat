@@ -224,7 +224,7 @@ function ccChat() {
 		ctl: {
 			templates: [], tplError: '', copyRoots: [],
 			browseOpen: false, browse: { path: '', parent: '', dirs: [], files: [] },
-			f: { src: 'template', template: '', template_label: '', aspect: '9:16', file: '', mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90, segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff', output_name: '', dest_dir: '', srt: '', cap_lang: 'id' },
+			f: { src: 'template', template: '', template_label: '', aspect: '9:16', file: '', mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90, silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1, segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff', output_name: '', dest_dir: '', srt: '', cap_lang: 'id' },
 			submitting: false, running: false, error: '', sessionId: 0,
 		},
 
@@ -319,6 +319,7 @@ function ccChat() {
 					template_label: f.src === 'template' ? f.template_label : '',
 					aspect: f.aspect, srt: f.srt, cap_lang: f.cap_lang, file: f.file,
 					mode: f.mode, moment_count: f.moment_count, moment_min: f.moment_min, moment_max: f.moment_max,
+					silence_cut: f.silence_cut ? '1' : '', silence_db: f.silence_db, silence_min: f.silence_min, silence_pad: f.silence_pad,
 					session_id: this.sessionId || 0,
 					segments: segments,
 					start: segments[0].start, end: segments[0].end,

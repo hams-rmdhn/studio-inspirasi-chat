@@ -293,6 +293,149 @@ function cc_control_srt_slice( $srt, $start, $end ) {
 	return $blocks ? implode( "\n\n", $blocks ) . "\n" : '';
 }
 
+/** Path ffmpeg executable — bin/ tema prioritas. */
+function cc_control_ffmpeg_bin() {
+	$d = cc_control_ffmpeg_dir();
+	if ( $d && file_exists( $d . 'ffmpeg' ) && is_executable( $d . 'ffmpeg' ) ) {
+		return $d . 'ffmpeg';
+	}
+	foreach ( array( 'ffmpeg', '/usr/local/bin/ffmpeg', '/opt/homebrew/bin/ffmpeg' ) as $c ) {
+		if ( 'ffmpeg' === $c || file_exists( $c ) ) {
+			return $c;
+		}
+	}
+	return '';
+}
+
+/**
+ * Deteksi keep-ranges (bagian bersuara) dalam [start,end] via ffmpeg
+ * silencedetect. Return array{r1,r2,...}|WP_Error — caller soft-fail.
+ */
+function cc_control_silence_ranges( $file, $start, $end, $opts = array() ) {
+	if ( ! $file || ! file_exists( $file ) ) {
+		return new WP_Error( 'cc_sil', 'File tidak ditemukan.' );
+	}
+	$ff = cc_control_ffmpeg_bin();
+	if ( ! $ff ) {
+		return new WP_Error( 'cc_sil', 'ffmpeg tidak tersedia.' );
+	}
+	$db    = (float) ( $opts['db'] ?? -35 );
+	$min   = (float) ( $opts['min'] ?? 0.5 );
+	$pad   = (float) ( $opts['pad'] ?? 0.1 );
+	$merge = (float) ( $opts['merge'] ?? 2.0 );
+
+	$cmd = escapeshellarg( $ff ) . ' -hide_banner -nostats'
+		. ' -ss ' . escapeshellarg( (string) max( 0, $start ) )
+		. ' -t ' . escapeshellarg( (string) max( 0.5, $end - $start ) )
+		. ' -i ' . escapeshellarg( $file )
+		. ' -af silencedetect=noise=' . escapeshellarg( $db . 'dB' ) . ':d=' . escapeshellarg( (string) $min )
+		. ' -f null - 2>&1';
+	$out = shell_exec( $cmd );
+	if ( ! $out ) {
+		return new WP_Error( 'cc_sil', 'silencedetect gagal dijalankan.' );
+	}
+	$sils = array();
+	$pend = null;
+	foreach ( explode( "\n", $out ) as $ln ) {
+		if ( preg_match( '/silence_start:\s*([\d.]+)/', $ln, $m ) ) {
+			$pend = $start + (float) $m[1];
+		} elseif ( preg_match( '/silence_end:\s*([\d.]+)/', $ln, $m ) && null !== $pend ) {
+			$sils[] = array( max( $start, $pend ), min( $end, $start + (float) $m[1] ) );
+			$pend = null;
+		}
+	}
+	if ( null !== $pend ) {
+		$sils[] = array( max( $start, $pend ), $end );
+	}
+	$keeps = array();
+	$cur   = $start;
+	foreach ( $sils as $s ) {
+		if ( $s[0] - $cur > 0.05 ) {
+			$keeps[] = array( $cur, $s[0] );
+		}
+		$cur = max( $cur, $s[1] );
+	}
+	if ( $end - $cur > 0.05 ) {
+		$keeps[] = array( $cur, $end );
+	}
+	foreach ( $keeps as &$k ) {
+		$k[0] = max( $start, $k[0] - $pad );
+		$k[1] = min( $end, $k[1] + $pad );
+	}
+	unset( $k );
+	$keeps = array_values( array_filter( $keeps, function ( $k ) { return $k[1] - $k[0] >= 0.8; } ) );
+	$merged = array();
+	foreach ( $keeps as $k ) {
+		$last = count( $merged ) ? count( $merged ) - 1 : -1;
+		if ( $last >= 0 && $k[0] - $merged[ $last ][1] < $merge ) {
+			$merged[ $last ][1] = $k[1];
+		} else {
+			$merged[] = $k;
+		}
+	}
+	while ( count( $merged ) > 120 ) {
+		$bi = 0;
+		$bg = PHP_FLOAT_MAX;
+		for ( $i = 0; $i + 1 < count( $merged ); $i++ ) {
+			$g = $merged[ $i + 1 ][0] - $merged[ $i ][1];
+			if ( $g < $bg ) {
+				$bg = $g;
+				$bi = $i;
+			}
+		}
+		$merged[ $bi ][1] = $merged[ $bi + 1 ][1];
+		array_splice( $merged, $bi + 1, 1 );
+	}
+	return $merged;
+}
+
+/**
+ * Remap cue SRT ke timeline terkompresi — out = in − totalRemovedSebelum(in);
+ * cue di dalam jeda dibuang.
+ */
+function cc_control_srt_remap( $srt, $keeps ) {
+	// outStart per keep = total keep sebelumnya.
+	$out = array();
+	$n   = 0;
+	foreach ( preg_split( '/\r?\n\r?\n/', trim( (string) $srt ) ) as $b ) {
+		if ( ! preg_match( '#(\d+):(\d+):(\d+),(\d+)\s*-->\s*(\d+):(\d+):(\d+),(\d+)#', $b, $m ) ) {
+			continue;
+		}
+		$t1 = cc_control_srt_ts( $m[1], $m[2], $m[3], $m[4] );
+		$t2 = cc_control_srt_ts( $m[5], $m[6], $m[7], $m[8] );
+		$acc = 0;
+		$n1  = null;
+		$n2  = null;
+		foreach ( $keeps as $k ) {
+			$kin = $k[1] - $k[0];
+			if ( $t1 >= $k[0] && $t1 < $k[1] ) {
+				$n1 = $acc + ( $t1 - $k[0] );
+				$n2 = $acc + min( $t2 - $k[0], $kin );
+				break;
+			}
+			$acc += $kin;
+		}
+		if ( null === $n1 ) {
+			continue;
+		}
+		$text = array();
+		$hit  = false;
+		foreach ( preg_split( '/\r?\n/', $b ) as $ln ) {
+			if ( $hit ) {
+				$text[] = $ln;
+			} elseif ( strpos( $ln, '-->' ) !== false ) {
+				$hit = true;
+			}
+		}
+		if ( '' === trim( implode( ' ', $text ) ) ) {
+			continue;
+		}
+		$n++;
+		$out[] = $n . "\n" . cc_control_srt_fmt( max( 0, $n1 ) ) . ' --> ' . cc_control_srt_fmt( max( $n1 + 0.1, $n2 ) ) . "\n" . implode( "\n", $text );
+	}
+	return $out ? implode( "\n\n", $out ) . "\n" : '';
+}
+
 /** Style + caption milik template di proyek hasil instantiate — untuk dihapus/replace. */
 function cc_control_caption_style( $cx, $project ) {
 	$g  = $cx->call( 'project.get', array( 'path' => $project ), 15 );
@@ -1003,13 +1146,109 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			}
 		);
 
+		/* 4a2. Potong jeda hening — split di batas keep, buang jeda ripple. */
+		$warn  = '';
+		$keeps = array();
+		if ( ! empty( $p['silence_cut'] ) ) {
+			$keeps = cc_control_silence_ranges(
+				(string) $p['file'],
+				(float) $p['start'],
+				(float) $p['end'],
+				array(
+					'db'  => (float) ( $p['silence_db'] ?? -35 ),
+					'min' => (float) ( $p['silence_min'] ?? 0.5 ),
+					'pad' => (float) ( $p['silence_pad'] ?? 0.1 ),
+				)
+			);
+			if ( is_wp_error( $keeps ) ) {
+				$warn  = ' Deteksi hening gagal (' . $keeps->get_error_message() . ') — lanjut tanpa potong.';
+				$keeps = array();
+			}
+		}
+		if ( count( $keeps ) > 1 ) {
+			$step(
+				'Memotong ' . ( count( $keeps ) - 1 ) . ' jeda hening',
+				function () use ( $cx, $project, $keeps, $p ) {
+					$g = $cx->call( 'project.get', array( 'path' => $project ), 30 );
+					if ( is_wp_error( $g ) ) {
+						return $g;
+					}
+					// Clip utama (video) + posisi timeline-nya.
+					$cid = '';
+					$home = 0;
+					foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
+						if ( ( $tl['id'] ?? '' ) !== ( $g['project']['activeTimelineId'] ?? '' ) ) {
+							continue;
+						}
+						foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+							if ( 'video' === ( $c['kind'] ?? '' ) ) {
+								$cid  = (string) $c['id'];
+								$home = (float) $c['start'];
+								break 2;
+							}
+						}
+					}
+					if ( '' === $cid ) {
+						return new WP_Error( 'cc_clip', 'Clip utama tidak ditemukan untuk split.' );
+					}
+					$start = (float) $p['start'];
+					// Gaps = komplemen keeps dalam [start,end]; split kanan→kiri
+					// supaya posisi tetap valid (clip kiri mempertahankan cid).
+					$gaps = array();
+					$cur  = $start;
+					foreach ( $keeps as $k ) {
+						if ( $k[0] - $cur > 0.05 ) {
+							$gaps[] = array( $cur, $k[0] );
+						}
+						$cur = max( $cur, $k[1] );
+					}
+					foreach ( array_reverse( $gaps ) as $g ) {
+						foreach ( array( $g[1], $g[0] ) as $b ) {
+							$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'splitClips', 'clipIds' => array( $cid ), 'at' => $home + ( $b - $start ) ) ), 30 );
+							if ( is_wp_error( $r ) ) {
+								return $r;
+							}
+						}
+					}
+					// Kumpulkan clip yang menempati jeda → removeClips ripple.
+					$g2   = $cx->call( 'project.get', array( 'path' => $project ), 30 );
+					if ( is_wp_error( $g2 ) ) {
+						return $g2;
+					}
+					$rm = array();
+					foreach ( (array) ( $g2['project']['timelines'] ?? array() ) as $tl ) {
+						foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+							if ( 'video' !== ( $c['kind'] ?? '' ) ) {
+								continue;
+							}
+							$css = (float) ( $c['sourceStart'] ?? -1 );
+							foreach ( $gaps as $g ) {
+								if ( $css >= $g[0] - 0.02 && $css < $g[1] - 0.02 ) {
+									$rm[] = (string) $c['id'];
+									break;
+								}
+							}
+						}
+					}
+					if ( ! $rm ) {
+						return new WP_Error( 'cc_sil', 'Tidak ada clip jeda ditemukan setelah split.' );
+					}
+					$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'removeClips', 'clipIds' => $rm, 'ripple' => true ) ), 30 );
+					return is_wp_error( $r ) ? $r : true;
+				}
+			);
+		}
+
 		/* 4b. Subtitle opsional — manual .srt prioritas; else caption YouTube — soft-fail */
-		$warn    = '';
 		$srt_txt = '';
 		if ( ! empty( $p['srt'] ) && file_exists( $p['srt'] ) && CC_Tools::read_allowed( $p['srt'] ) ) {
 			$srt_txt = (string) file_get_contents( $p['srt'] );
 		} elseif ( ! empty( $p['yt_srt'] ) && file_exists( $p['yt_srt'] ) && 'none' !== ( $p['cap_lang'] ?? '' ) ) {
-			$srt_txt = cc_control_srt_slice( (string) file_get_contents( $p['yt_srt'] ), (float) $p['start'], (float) $p['end'] );
+			$raw     = (string) file_get_contents( $p['yt_srt'] );
+			// Silence cut → remap cue absolut ke timeline terkompresi; else slice.
+			$srt_txt = $keeps
+				? cc_control_srt_remap( $raw, $keeps )
+				: cc_control_srt_slice( $raw, (float) $p['start'], (float) $p['end'] );
 		}
 		if ( '' !== trim( $srt_txt ) ) {
 			$tid = cc_message_add( $session_id, 'task', 'Menambahkan subtitle', array( 'tool' => 'control', 'status' => 'running', 'progress' => 0 ), 'running' );

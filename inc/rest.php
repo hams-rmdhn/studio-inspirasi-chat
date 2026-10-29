@@ -431,6 +431,10 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'moment_count'  => (int) $request->get_param( 'moment_count' ),
 		'moment_min'    => (int) $request->get_param( 'moment_min' ),
 		'moment_max'    => (int) $request->get_param( 'moment_max' ),
+		'silence_cut'   => ! empty( $request->get_param( 'silence_cut' ) ) && 'false' !== $request->get_param( 'silence_cut' ),
+		'silence_db'    => (float) $request->get_param( 'silence_db' ),
+		'silence_min'   => (float) $request->get_param( 'silence_min' ),
+		'silence_pad'   => (float) $request->get_param( 'silence_pad' ),
 		'segments'      => array(),
 	);
 	if ( ! in_array( $p['cap_lang'], array( 'id', 'en', 'auto', 'none' ), true ) ) {
