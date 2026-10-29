@@ -115,6 +115,7 @@ function ccChat() {
 			this.messages = [];
 			this.oldestId = 0;
 			this.hasMore = false;
+			this.showJump = false; // reset — jangan warisi state sesi sebelumnya
 			try {
 				const d = await ccApi('GET', '/sessions/' + id + '/messages');
 				this.activeTitle = d.title || 'Percakapan baru';
