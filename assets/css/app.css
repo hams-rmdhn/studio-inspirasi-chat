@@ -490,3 +490,12 @@ body {
 .cc-segrow .cc-input { text-align: center; }
 .cc-field > .cc-btn-ghost { margin-top: .5rem; align-self: flex-start; }
 .cc-btn-sm { padding: .35rem .8rem; font-size: .74rem; display: inline-flex; align-items: center; gap: .3rem; }
+
+/* Wizard steps (Control) */
+.cc-steps { display: flex; gap: .4rem; margin-bottom: 1rem; }
+.cc-step {
+	font-size: .7rem; font-weight: 600; padding: .2rem .6rem; border-radius: 999px;
+	background: var(--cc-hover); color: var(--cc-muted); cursor: pointer;
+}
+.cc-step-on { background: var(--cc-primary); color: #fff; }
+.cc-step-done { background: var(--cc-border); color: var(--cc-text); }

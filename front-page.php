@@ -75,6 +75,15 @@ get_header();
 		<!-- ============ CONTROL VIEW ============ -->
 		<div x-show="mode === 'control'" x-cloak class="cc-ctl">
 			<div class="cc-ctl-card">
+				<!-- Indikator langkah -->
+				<div class="cc-steps">
+					<template x-for="(lbl, i) in ['Sumber','Subtitle','Segmen','Proyek']" :key="i">
+						<span class="cc-step" :class="ctl.step === i ? 'cc-step-on' : (ctl.step > i ? 'cc-step-done' : '')" @click="ctl.step = i" x-text="lbl"></span>
+					</template>
+				</div>
+
+				<!-- LANGKAH 1: Sumber & Video -->
+				<div x-show="ctl.step === 0">
 				<h4 class="cc-sec">Sumber & Video</h4>
 				<div class="cc-field"><span>Sumber proyek</span>
 					<div class="cc-tabs">
@@ -111,6 +120,10 @@ get_header();
 					<small class="cc-note">Tempel link <code>youtube.com</code>/<code>youtu.be</code> — video & subtitle-nya diunduh otomatis.</small>
 				</label>
 
+				</div>
+
+				<!-- LANGKAH 2: Subtitle -->
+				<div x-show="ctl.step === 1">
 				<h4 class="cc-sec">Subtitle</h4>
 				<label class="cc-field"><span>Caption</span>
 					<select x-model="ctl.f.cap_lang" class="cc-input">
@@ -125,6 +138,10 @@ get_header();
 					<small class="cc-note">Bila diisi, dipakai apa adanya tanpa potongan waktu.</small>
 				</label>
 
+				</div>
+
+				<!-- LANGKAH 3: Segmen & Potong -->
+				<div x-show="ctl.step === 2">
 				<h4 class="cc-sec">Segmen & Potong</h4>
 				<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
 					<div class="cc-filerow" style="gap:.75rem;margin-bottom:.4rem">
@@ -170,6 +187,10 @@ get_header();
 					<small class="cc-note">Manual: format <code>m:ss</code>. Otomatis: AI pilih momen dari transkrip (YouTube) — judul dipakai sebagai nama proyek.</small>
 				</div>
 
+				</div>
+
+				<!-- LANGKAH 4: Proyek & Aksi -->
+				<div x-show="ctl.step === 3">
 				<h4 class="cc-sec">Proyek & Aksi</h4>
 				<label class="cc-field"><span>Nama proyek</span>
 					<input type="text" x-model="ctl.f.name" class="cc-input" placeholder="reel-baru-01">
@@ -198,11 +219,14 @@ get_header();
 						</label>
 					</div>
 				</template>
+				</div>
 
 				<p x-show="ctl.error" x-cloak x-text="ctl.error" class="cc-err"></p>
 
 				<div class="cc-ctl-act">
-					<button type="button" @click="submitControl()" :disabled="ctl.submitting || hasActive" class="cc-btn cc-btn-primary">
+					<button type="button" @click="ctl.step--" x-show="ctl.step > 0" x-cloak class="cc-btn cc-btn-ghost">← Kembali</button>
+					<button type="button" @click="ctl.step++" x-show="ctl.step < 3" x-cloak class="cc-btn cc-btn-primary">Lanjut →</button>
+					<button type="button" @click="submitControl()" :disabled="ctl.submitting || hasActive" x-show="ctl.step === 3" x-cloak class="cc-btn cc-btn-primary">
 						<i x-show="ctl.submitting" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
 						Jalankan
 					</button>
