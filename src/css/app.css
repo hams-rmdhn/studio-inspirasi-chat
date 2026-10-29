@@ -1,0 +1,12 @@
+/**
+ * Tailwind source — kept for a future CLI build. Until Node.js is
+ * available on this machine, assets/css/app.css is maintained by hand
+ * and this file is reference only.
+ *
+ * Build command when ready:
+ *   npx tailwindcss -i src/css/app.css -o assets/css/app.css --watch
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;

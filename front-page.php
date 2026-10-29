@@ -1,0 +1,431 @@
+<?php
+/**
+ * Front page — the whole app. Access is gated in functions.php
+ * (template_redirect): guests → login, non-admins → 403.
+ */
+defined( 'ABSPATH' ) || exit;
+get_header();
+?>
+<div class="cc-shell" x-data="ccChat()">
+
+	<!-- ============ SIDEBAR ============ -->
+	<aside class="cc-side" :class="sideOpen ? '' : 'cc-side-hidden'">
+		<div class="cc-side-top">
+			<div class="cc-brand">
+				<i data-lucide="clapperboard" class="w-5 h-5 text-emerald-600"></i>
+				<span>Studio Inspirasi Chat</span>
+			</div>
+			<button type="button" @click="newSession()" class="cc-new">
+				<i data-lucide="plus" class="w-4 h-4"></i> Chat baru
+			</button>
+		</div>
+
+		<nav class="cc-sessions">
+			<template x-for="(s, i) in sessions" :key="s.id">
+				<div class="cc-sess"
+					:class="{'cc-sess-on': s.id === activeId, 'cc-drop': dropAt === i && dragFrom !== i, 'cc-dragging': dragFrom === i}"
+					draggable="true"
+					@dragstart="sessDragStart(i, $event)"
+					@dragover.prevent="sessDragOver(i)"
+					@drop.prevent="sessDrop(i)"
+					@dragend="sessDragEnd()">
+					<button type="button" @click="openSession(s.id)" class="cc-sess-btn">
+						<span class="truncate" x-text="s.title"></span>
+						<span x-show="s.active" x-cloak class="cc-spin-dot" title="Sedang bekerja"></span>
+					</button>
+					<button type="button" @click="openRename(s)" class="cc-sess-act" title="Rename / hapus" aria-label="Rename / hapus">
+						<i data-lucide="pencil" class="w-3.5 h-3.5"></i>
+					</button>
+				</div>
+			</template>
+			<p x-show="!sessions.length" x-cloak class="cc-sess-empty">Belum ada percakapan.</p>
+		</nav>
+
+		<div class="cc-side-foot">
+			<div class="cc-status" :title="statusHint">
+				<span class="cc-dot" :class="statusOpenai ? 'cc-dot-ok' : 'cc-dot-off'"></span> OpenAI
+				<span class="cc-dot ml-2" :class="statusConcat ? 'cc-dot-ok' : 'cc-dot-off'"></span> Studio Inspirasi
+			</div>
+			<button type="button" @click="openSettings()" class="cc-set" title="Pengaturan" aria-label="Pengaturan">
+				<i data-lucide="settings-2" class="w-4 h-4"></i>
+			</button>
+		</div>
+	</aside>
+
+	<!-- ============ MAIN ============ -->
+	<main class="cc-main">
+		<header class="cc-head">
+			<button type="button" @click="sideOpen = !sideOpen" class="cc-burger" aria-label="Sidebar">
+				<i data-lucide="panel-left" class="w-4 h-4"></i>
+			</button>
+			<h1 class="cc-title" x-text="mode === 'control' ? 'Control' : (activeTitle || 'Studio Inspirasi Chat')"></h1>
+			<div class="cc-mode" role="tablist" aria-label="Mode">
+				<button type="button" @click="setMode('chat')" :class="mode === 'chat' ? 'cc-mode-on' : ''" class="cc-mode-btn">Chat</button>
+				<button type="button" @click="setMode('control')" :class="mode === 'control' ? 'cc-mode-on' : ''" class="cc-mode-btn">Control</button>
+			</div>
+			<span x-show="hasActive" x-cloak class="cc-working" x-text="jobDetail || 'AI sedang bekerja…'"></span>
+			<div class="cc-head-act">
+				<button type="button" @click="toggleDark()" class="cc-set" title="Mode gelap/terang" aria-label="Mode gelap">
+					<i x-show="!dark" data-lucide="moon" class="w-4 h-4"></i>
+					<i x-show="dark" x-cloak data-lucide="sun" class="w-4 h-4"></i>
+				</button>
+			</div>
+		</header>
+
+		<!-- ============ CONTROL VIEW ============ -->
+		<div x-show="mode === 'control'" x-cloak class="cc-ctl">
+			<div class="cc-ctl-card">
+				<div class="cc-field"><span>Sumber proyek</span>
+					<div class="cc-tabs">
+						<button type="button" @click="ctl.f.src = 'template'" :class="ctl.f.src === 'template' && 'cc-tab-on'" class="cc-tab">Dari template</button>
+						<button type="button" @click="ctl.f.src = 'baru'" :class="ctl.f.src === 'baru' && 'cc-tab-on'" class="cc-tab">Proyek baru</button>
+					</div>
+				</div>
+
+				<label class="cc-field" x-show="ctl.f.src === 'template'"><span>Template</span>
+					<select x-model="ctl.f.template" class="cc-input" @change="ctlTemplateChange()">
+						<option value="">— pilih template —</option>
+						<template x-for="t in ctl.templates" :key="t.path">
+							<option :value="t.path" x-text="t.name + ' · ' + t.width + '×' + t.height"></option>
+						</template>
+					</select>
+					<small class="cc-note" x-show="ctl.tplError" x-cloak x-text="ctl.tplError"></small>
+					<small class="cc-note">Ukuran & struktur mengikuti template.</small>
+				</label>
+
+				<label class="cc-field" x-show="ctl.f.src === 'baru'"><span>Aspect ratio</span>
+					<select x-model="ctl.f.aspect" class="cc-input">
+						<option value="9:16">9:16 — vertikal (1080×1920)</option>
+						<option value="16:9">16:9 — landscape (1920×1080)</option>
+						<option value="1:1">1:1 — persegi (1080×1080)</option>
+						<option value="4:5">4:5 — potrait feed (1080×1350)</option>
+					</select>
+				</label>
+
+				<label class="cc-field"><span>File video</span>
+					<div class="cc-filerow">
+						<input type="text" x-model="ctl.f.file" @input="ctlSuggestName()" class="cc-input" placeholder="/path/ke/video.mp4 atau URL YouTube">
+						<button type="button" @click="ctlBrowseOpen()" class="cc-btn">Browse</button>
+					</div>
+					<small class="cc-note">Tempel link <code>youtube.com</code>/<code>youtu.be</code> — video & subtitle-nya diunduh otomatis.</small>
+				</label>
+
+				<label class="cc-field"><span>Subtitle</span>
+					<select x-model="ctl.f.cap_lang" class="cc-input">
+						<option value="id">Indonesia (auto-caption)</option>
+						<option value="en">English</option>
+						<option value="auto">Semua yang tersedia</option>
+						<option value="none">Tanpa subtitle</option>
+					</select>
+					<small class="cc-note">Atau isi file .srt manual di bawah (lebih didahulukan).</small>
+				</label>
+
+				<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
+					<div class="cc-filerow" style="gap:.75rem;margin-bottom:.4rem">
+						<label class="cc-note" style="display:flex;align-items:center;gap:.3rem"><input type="radio" x-model="ctl.f.mode" value="manual"> Manual</label>
+						<label class="cc-note" style="display:flex;align-items:center;gap:.3rem"><input type="radio" x-model="ctl.f.mode" value="moments"> Otomatis — momen terbaik</label>
+					</div>
+					<div x-show="ctl.f.mode === 'moments'" class="cc-filerow" style="gap:.5rem;margin-bottom:.4rem">
+						<input type="number" x-model.number="ctl.f.moment_count" min="1" max="10" class="cc-input" style="width:4.5rem" title="Jumlah momen">
+						<span class="cc-note">momen</span>
+						<input type="number" x-model.number="ctl.f.moment_min" min="5" class="cc-input" style="width:4.5rem" title="Durasi minimum (detik)">
+						<span class="cc-note">–</span>
+						<input type="number" x-model.number="ctl.f.moment_max" min="10" class="cc-input" style="width:4.5rem" title="Durasi maksimum (detik)">
+						<span class="cc-note">detik</span>
+					</div>
+					<template x-if="ctl.f.mode === 'manual'">
+						<div>
+							<template x-for="(s, i) in ctl.f.segments" :key="i">
+								<div class="cc-filerow cc-segrow">
+									<input type="text" x-model="s.start" class="cc-input" placeholder="2:30" inputmode="numeric">
+									<span class="cc-note">s/d</span>
+									<input type="text" x-model="s.end" class="cc-input" placeholder="3:32" inputmode="numeric">
+									<button type="button" @click="ctl.f.segments.splice(i, 1)" x-show="ctl.f.segments.length > 1" class="cc-set" title="Hapus segmen" aria-label="Hapus segmen">
+										<i data-lucide="x" class="w-4 h-4"></i>
+									</button>
+								</div>
+							</template>
+							<button type="button" @click="ctl.f.segments.push({start: '', end: ''})" class="cc-btn cc-btn-ghost cc-btn-sm">
+								<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah segmen
+							</button>
+						</div>
+					</template>
+					<small class="cc-note">Manual: format <code>m:ss</code>. Otomatis: AI pilih momen dari transkrip (YouTube) — judul dipakai sebagai nama proyek.</small>
+				</div>
+
+				<label class="cc-field"><span>Nama proyek</span>
+					<input type="text" x-model="ctl.f.name" class="cc-input" placeholder="reel-baru-01">
+				</label>
+
+				<label class="cc-field"><span>File .srt manual <em class="cc-tag">opsional</em></span>
+					<input type="text" x-model="ctl.f.srt" class="cc-input" placeholder="/path/ke/subtitle.srt — override caption YouTube">
+					<small class="cc-note">Bila diisi, dipakai apa adanya tanpa potongan waktu.</small>
+				</label>
+
+				<div class="cc-field"><span>Aksi akhir</span>
+					<label class="cc-radio"><input type="radio" value="handoff" x-model="ctl.f.action">
+						Simpan & serah ke Clovercut — ekspor manual di aplikasi</label>
+					<label class="cc-radio"><input type="radio" value="export" x-model="ctl.f.action">
+						Langsung export via API</label>
+				</div>
+
+				<template x-if="ctl.f.action === 'export'">
+					<div class="cc-row2">
+						<label class="cc-field"><span>Nama output</span>
+							<input type="text" x-model="ctl.f.output_name" class="cc-input" placeholder="reel.mp4">
+						</label>
+						<label class="cc-field"><span>Salin ke (opsional)</span>
+							<select x-model="ctl.f.dest_dir" class="cc-input">
+								<option value="">— tidak disalin —</option>
+								<template x-for="r in ctl.copyRoots" :key="r">
+									<option :value="r" x-text="r"></option>
+								</template>
+							</select>
+							<small class="cc-note" x-show="!ctl.copyRoots.length" x-cloak>Kosong — atur folder tujuan di Settings.</small>
+						</label>
+					</div>
+				</template>
+
+				<p x-show="ctl.error" x-cloak x-text="ctl.error" class="cc-err"></p>
+
+				<div class="cc-ctl-act">
+					<button type="button" @click="submitControl()" :disabled="ctl.submitting || hasActive" class="cc-btn cc-btn-primary">
+						<i x-show="ctl.submitting" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+						Jalankan
+					</button>
+					<span x-show="ctl.running" x-cloak class="cc-run-status">
+						<span class="cc-spin-dot"></span>
+						<span x-text="jobDetail || 'Sedang berjalan…'"></span>
+						<a href="#" @click.prevent="setMode('chat')" x-show="ctl.sessionId" x-cloak>lihat detail →</a>
+					</span>
+				</div>
+			</div>
+		</div>
+
+		<!-- Thread -->
+		<div id="cc-thread" class="cc-thread" x-show="mode === 'chat'" @scroll.passive="onScroll()">
+			<div class="cc-thread-in">
+				<template x-if="hasMore">
+					<button type="button" @click="loadOlder()" class="cc-older" :disabled="_loadingOlder"
+						x-text="_loadingOlder ? 'Memuat…' : 'Muat pesan lebih lama'"></button>
+				</template>
+				<template x-if="!messages.length && !loading">
+					<div class="cc-hero">
+						<i data-lucide="clapperboard" class="w-10 h-10 mx-auto text-emerald-400"></i>
+						<h2>Apa yang mau kamu edit?</h2>
+						<p>Contoh: <em>"Gabungkan semua video di D:\kegiatan jadi satu reel, lalu simpan ke D:\kegiatan\dokumentasi"</em></p>
+						<p class="text-xs opacity-60">AI akan membuat proyek, mengimpor media, menyusun timeline, dan mengekspor lewat Studio Inspirasi.</p>
+					</div>
+				</template>
+
+				<template x-for="m in messages" :key="m.id">
+					<div>
+						<!-- assistant placeholder while queued -->
+						<template x-if="m.role === 'assistant' && (m.status === 'queued' || m.status === 'running')">
+							<div class="cc-msg cc-msg-ai"><div class="cc-bubble cc-bubble-ai cc-thinking">
+								<span></span><span></span><span></span>
+							</div></div>
+						</template>
+						<template x-if="!(m.role === 'assistant' && (m.status === 'queued' || m.status === 'running'))">
+							<div x-html="m.html"></div>
+						</template>
+					</div>
+				</template>
+			</div>
+		</div>
+
+		<!-- Jump to latest -->
+		<button x-show="showJump && mode === 'chat'" x-cloak type="button" @click="jumpBottom()" class="cc-jump" title="Lompat ke pesan terbaru" aria-label="Ke bawah">
+			<i data-lucide="arrow-down" class="w-4 h-4"></i>
+		</button>
+
+		<!-- Composer -->
+		<footer class="cc-composer" x-show="mode === 'chat'">
+			<p x-show="error" x-cloak x-text="error" class="cc-err"></p>
+			<div class="cc-box">
+				<button type="button" class="cc-plus" title="Lampiran (segera)" disabled aria-label="Lampiran">
+					<i data-lucide="plus" class="w-4 h-4"></i>
+				</button>
+				<textarea
+					x-model="body"
+					x-ref="composerTa"
+					@input="autoGrow($event)"
+					@keydown.enter.exact.prevent="send()"
+					rows="1"
+					:placeholder="hasActive ? 'AI sedang bekerja — tunggu atau batalkan…' : 'Ketik perintah edit… (Enter untuk kirim)'"
+					:disabled="hasActive || sending"
+					class="cc-input"
+				></textarea>
+				<button x-show="!hasActive" type="button" @click="send()" :disabled="sending || !body.trim()" class="cc-send" title="Kirim" aria-label="Kirim">
+					<i x-show="!sending" data-lucide="send" class="w-4 h-4"></i>
+					<i x-show="sending" x-cloak data-lucide="loader-2" class="w-4 h-4 animate-spin"></i>
+				</button>
+				<button x-show="hasActive" x-cloak type="button" @click="cancel()" class="cc-send cc-stop" title="Batalkan" aria-label="Batalkan">
+					<i data-lucide="square" class="w-4 h-4"></i>
+				</button>
+			</div>
+			<p class="cc-hint">Studio Inspirasi Chat mengirim perintahmu ke OpenAI, lalu mengendalikan Studio Inspirasi di komputer ini. Periksa kembali hasil edit di aplikasi.</p>
+		</footer>
+	</main>
+
+	<!-- ============ MODAL: RENAME / HAPUS ============ -->
+	<div x-show="modal.open" x-cloak class="cc-ovl" x-transition.opacity @click.self="modal.open = false" @keydown.escape.window="modal.open = false">
+		<div class="cc-modal">
+			<h3 class="cc-modal-title" x-text="modal.confirm ? 'Hapus percakapan?' : 'Rename percakapan'"></h3>
+
+			<template x-if="!modal.confirm">
+				<div>
+					<input type="text" x-model="modal.title" maxlength="200" class="cc-input" placeholder="Judul percakapan" @keydown.enter="saveRename()">
+					<div class="cc-modal-act">
+						<button type="button" @click="askDelete()" :disabled="modal.busy" class="cc-btn cc-btn-danger">
+							<i data-lucide="trash-2" class="w-3.5 h-3.5"></i> Hapus
+						</button>
+						<span class="cc-flex1"></span>
+						<button type="button" @click="modal.open = false" class="cc-btn cc-btn-ghost">Batal</button>
+						<button type="button" @click="saveRename()" :disabled="modal.busy || !modal.title.trim()" class="cc-btn">
+							<i x-show="modal.busy" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Simpan
+						</button>
+					</div>
+				</div>
+			</template>
+
+			<template x-if="modal.confirm">
+				<div>
+					<p class="cc-note">Percakapan <strong x-text="modal.title"></strong> beserta seluruh isinya akan dihapus permanen.</p>
+					<div class="cc-modal-act">
+						<span class="cc-flex1"></span>
+						<button type="button" @click="modal.confirm = false" :disabled="modal.busy" class="cc-btn cc-btn-ghost">Kembali</button>
+						<button type="button" @click="confirmDelete()" :disabled="modal.busy" class="cc-btn cc-btn-danger">
+							<i x-show="!modal.busy" data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+							<i x-show="modal.busy" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Ya, hapus
+						</button>
+					</div>
+				</div>
+			</template>
+		</div>
+	</div>
+
+	<!-- ============ MODAL: FILE BROWSER ============ -->
+	<div x-show="ctl.browseOpen" x-cloak class="cc-ovl" x-transition.opacity @click.self="ctl.browseOpen = false" @keydown.escape.window="ctl.browseOpen = false">
+		<div class="cc-modal cc-modal-lg">
+			<div class="flex items-center justify-between mb-3">
+				<h3 class="cc-modal-title">Pilih file video</h3>
+				<button type="button" @click="ctl.browseOpen = false" class="cc-set" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
+			</div>
+			<div class="cc-browse-path">
+				<button type="button" @click="ctlBrowseTo(ctl.browse.parent)" :disabled="!ctl.browse.parent" class="cc-set" title="Naik" aria-label="Naik">
+					<i data-lucide="arrow-up" class="w-4 h-4"></i>
+				</button>
+				<span x-text="ctl.browse.path" class="cc-browse-cur"></span>
+			</div>
+			<div class="cc-browse-list">
+				<template x-for="d in ctl.browse.dirs" :key="d.path">
+					<button type="button" @click="ctlBrowseTo(d.path)" class="cc-browse-item">
+						<i data-lucide="folder" class="w-4 h-4"></i><span x-text="d.name"></span>
+					</button>
+				</template>
+				<template x-for="f in ctl.browse.files" :key="f.path">
+					<button type="button" @click="ctlPick(f.path)" class="cc-browse-item cc-browse-file">
+						<i data-lucide="file-video" class="w-4 h-4"></i><span x-text="f.name"></span>
+						<span class="cc-browse-size" x-text="ctlSize(f.size)"></span>
+					</button>
+				</template>
+				<p x-show="!ctl.browse.dirs.length && !ctl.browse.files.length" x-cloak class="cc-note">Tidak ada file media di folder ini.</p>
+			</div>
+		</div>
+	</div>
+
+	<!-- ============ MODAL: SETTINGS ============ -->
+	<div x-show="st.open" x-cloak class="cc-ovl" x-transition.opacity @click.self="st.open = false" @keydown.escape.window="st.open = false">
+		<div class="cc-modal cc-modal-lg">
+			<div class="flex items-center justify-between mb-3">
+				<h3 class="cc-modal-title">Pengaturan</h3>
+				<button type="button" @click="st.open = false" class="cc-set" aria-label="Tutup"><i data-lucide="x" class="w-4 h-4"></i></button>
+			</div>
+
+			<div class="cc-tabs">
+				<template x-for="t in [['openai','OpenAI'],['concat','Studio Inspirasi'],['folder','Folder']]">
+					<button type="button" @click="st.tab = t[0]" :class="st.tab === t[0] && 'cc-tab-on'" class="cc-tab" x-text="t[1]"></button>
+				</template>
+			</div>
+			<p x-show="st.notice" x-cloak x-text="st.notice" class="cc-notice" :class="st.noticeOk ? 'cc-notice-ok' : 'cc-notice-err'"></p>
+
+			<!-- TAB: OpenAI -->
+			<div x-show="st.tab === 'openai'" class="cc-tabbody">
+				<label class="cc-field"><span>API Key <em x-show="st.keySet" x-cloak class="cc-tag">tersimpan</em></span>
+					<input type="password" x-model="st.f.openai_key" class="cc-input" :placeholder="st.keySet ? '•••••••• (isi untuk mengganti)' : 'sk-…'" autocomplete="new-password">
+				</label>
+				<label class="cc-field"><span>Model</span>
+					<input type="text" x-model="st.f.openai_model" class="cc-input" placeholder="gpt-4o-mini">
+				</label>
+				<label class="cc-field"><span>System prompt <em class="cc-tag">kosong = bawaan</em></span>
+					<textarea x-model="st.f.openai_prompt" rows="5" class="cc-input"></textarea>
+				</label>
+				<div class="cc-test">
+					<button type="button" @click="testConn('openai')" :disabled="st.testing === 'openai'" class="cc-btn">
+						<i x-show="st.testing !== 'openai'" data-lucide="zap" class="w-3.5 h-3.5"></i>
+						<i x-show="st.testing === 'openai'" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+						<span x-text="st.testing === 'openai' ? 'Mengetes…' : 'Test koneksi OpenAI'"></span>
+					</button>
+					<p x-show="st.testResult.openai" x-cloak class="cc-test-res"
+						:class="st.testResult.openai && st.testResult.openai.ok ? 'cc-notice-ok' : 'cc-notice-err'"
+						x-text="st.testResult.openai ? ((st.testResult.openai.ok ? '✓ ' : '✗ ') + st.testResult.openai.message) : ''"></p>
+				</div>
+			</div>
+
+			<!-- TAB: Studio Inspirasi -->
+			<div x-show="st.tab === 'concat'" class="cc-tabbody">
+				<label class="cc-field"><span>Mode koneksi</span>
+					<select x-model="st.f.concat_mode" class="cc-input">
+						<option value="auto">Auto — baca automation.json</option>
+						<option value="manual">Manual — address + token</option>
+					</select>
+				</label>
+				<p class="cc-note" x-text="st.automation"></p>
+				<template x-if="st.f.concat_mode === 'manual'">
+					<div>
+						<label class="cc-field"><span>Address</span>
+							<input type="text" x-model="st.f.concat_addr" class="cc-input" placeholder="127.0.0.1:7420">
+						</label>
+						<label class="cc-field"><span>Token <em x-show="st.tokenSet" x-cloak class="cc-tag">tersimpan</em></span>
+							<input type="password" x-model="st.f.concat_token" class="cc-input" :placeholder="st.tokenSet ? '•••••••• (isi untuk mengganti)' : 'min. 20 karakter'" autocomplete="new-password">
+						</label>
+					</div>
+				</template>
+				<div class="cc-test">
+					<button type="button" @click="testConn('concat')" :disabled="st.testing === 'concat'" class="cc-btn">
+						<i x-show="st.testing !== 'concat'" data-lucide="zap" class="w-3.5 h-3.5"></i>
+						<i x-show="st.testing === 'concat'" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i>
+						<span x-text="st.testing === 'concat' ? 'Mengetes…' : 'Test koneksi Studio Inspirasi'"></span>
+					</button>
+					<p x-show="st.testResult.concat" x-cloak class="cc-test-res"
+						:class="st.testResult.concat && st.testResult.concat.ok ? 'cc-notice-ok' : 'cc-notice-err'"
+						x-text="st.testResult.concat ? ((st.testResult.concat.ok ? '✓ ' : '✗ ') + st.testResult.concat.message) : ''"></p>
+				</div>
+			</div>
+
+			<!-- TAB: Folder -->
+			<div x-show="st.tab === 'folder'" class="cc-tabbody">
+				<label class="cc-field"><span>Workspace (proyek & export sementara)</span>
+					<input type="text" x-model="st.f.workspace" class="cc-input">
+					<small class="cc-note">Harus di bawah home folder — batasan tulis Automation.</small>
+				</label>
+				<label class="cc-field"><span>Folder tujuan diizinkan (pisahkan dengan ;)</span>
+					<textarea x-model="st.f.copy_roots" rows="3" class="cc-input" placeholder="D:\kegiatan;D:\kegiatan\dokumentasi"></textarea>
+				</label>
+				<label class="cc-field"><span>Maks. iterasi tool per perintah</span>
+					<input type="number" x-model="st.f.max_iter" min="1" max="50" class="cc-input cc-input-sm">
+				</label>
+			</div>
+
+			<div class="cc-modal-act">
+				<span class="cc-flex1"></span>
+				<button type="button" @click="st.open = false" class="cc-btn cc-btn-ghost">Tutup</button>
+				<button type="button" @click="saveSettings()" :disabled="st.saving" class="cc-btn">
+					<i x-show="st.saving" x-cloak data-lucide="loader-2" class="w-3.5 h-3.5 animate-spin"></i> Simpan
+				</button>
+			</div>
+		</div>
+	</div>
+</div>
+<?php get_footer(); ?>

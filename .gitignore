@@ -1,0 +1,17 @@
+# OS / editor
+.DS_Store
+Thumbs.db
+*.swp
+.idea/
+.vscode/
+
+# Node (bila ada build assets)
+node_modules/
+
+# Runtime artifacts — bukan source
+_tmp/
+*.log
+
+# Binary yang diunduh saat aktivasi (alternatif dari commit langsung)
+# bin/yt-dlp
+# bin/ffmpeg
