@@ -39,6 +39,23 @@ add_action(
 add_action( 'after_switch_theme', 'cc_ws_ensure' );
 
 /**
+ * Favicon — inline SVG matching ikon clapperboard emerald di UI.
+ */
+add_action(
+	'wp_head',
+	function () {
+		$svg = '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">'
+			. '<rect width="24" height="24" rx="5" fill="#059669"/>'
+			. '<g fill="none" stroke="#ffffff" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">'
+			. '<path d="M20.2 6 3 11l-.9-2.4c-.3-1.1.3-2.2 1.3-2.5l13.5-4c1.1-.3 2.2.3 2.5 1.3Z"/>'
+			. '<path d="m6.2 5.3 3.1 3.9"/><path d="m12.4 3.4 3.1 4"/>'
+			. '<path d="M3 11h18v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2Z"/>'
+			. '</g></svg>';
+		echo '<link rel="icon" type="image/svg+xml" href="data:image/svg+xml,' . rawurlencode( $svg ) . '">' . "\n";
+	}
+);
+
+/**
  * Access guard — the app shell is for admins only.
  * Guests → wp-login; logged-in non-admins → plain notice.
  */
