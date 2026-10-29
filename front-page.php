@@ -344,7 +344,7 @@ get_header();
 			</div>
 
 			<div class="cc-tabs">
-				<template x-for="t in [['ai','Agen AI'],['concat','Studio Inspirasi'],['folder','Folder']]">
+				<template x-for="t in [['ai','Agen AI'],['concat','Studio Inspirasi'],['folder','Folder'],['templates','Template']]">
 					<button type="button" @click="st.tab = t[0]" :class="st.tab === t[0] && 'cc-tab-on'" class="cc-tab" x-text="t[1]"></button>
 				</template>
 			</div>
@@ -426,6 +426,29 @@ get_header();
 				<label class="cc-field"><span>Maks. iterasi tool per perintah</span>
 					<input type="number" x-model="st.f.max_iter" min="1" max="50" class="cc-input cc-input-sm">
 				</label>
+			</div>
+
+			<!-- TAB: Template -->
+			<div x-show="st.tab === 'templates'" class="cc-tabbody">
+				<div x-show="!st.templates.length" class="cc-note" style="padding:.5rem 0">Memuat template…</div>
+				<template x-for="t in st.templates" :key="t.path">
+					<div class="cc-filerow" style="gap:.5rem;margin-bottom:.5rem">
+						<template x-if="st.renaming === t.path">
+							<input type="text" x-model="st.renameVal" class="cc-input" @keydown.enter="renameTemplate(t)">
+						</template>
+						<template x-if="st.renaming !== t.path">
+							<span class="cc-flex1" style="font-size:.85rem" x-text="t.name"></span>
+						</template>
+						<button type="button" class="cc-set" :title="st.renaming === t.path ? 'Simpan nama' : 'Rename'"
+							@click="st.renaming === t.path ? renameTemplate(t) : (st.renaming = t.path, st.renameVal = t.name)">
+							<i :data-lucide="st.renaming === t.path ? 'check' : 'pencil'" class="w-3.5 h-3.5"></i>
+						</button>
+						<button type="button" class="cc-set" title="Hapus template" @click="deleteTemplate(t)"
+							style="color:#dc2626">
+							<i data-lucide="trash-2" class="w-3.5 h-3.5"></i>
+						</button>
+					</div>
+				</template>
 			</div>
 
 			<div class="cc-modal-act">

@@ -32,6 +32,9 @@ function cc_register_routes() {
 		array( '/settings', 'GET', 'cc_rest_settings_get' ),
 		array( '/settings', 'POST', 'cc_rest_settings_save' ),
 		array( '/settings/test', 'POST', 'cc_rest_settings_test' ),
+		array( '/settings/templates', 'GET', 'cc_rest_templates_list' ),
+		array( '/settings/templates/rename', 'POST', 'cc_rest_templates_rename' ),
+		array( '/settings/templates/delete', 'POST', 'cc_rest_templates_delete' ),
 	);
 	foreach ( $routes as $r ) {
 		register_rest_route(
@@ -295,6 +298,75 @@ function cc_rest_settings_test( WP_REST_Request $request ) {
 		? 'API ' . ( $res['apiVersion'] ?? '?' ) . ' · Studio Inspirasi ' . ( $res['concat'] ?? '?' ) . ' · caps: ' . implode( ',', (array) ( $res['capabilities'] ?? array() ) )
 		: (string) $res;
 	return rest_ensure_response( array( 'ok' => true, 'message' => $msg ) );
+}
+
+/* ---------------------------------------------------------------------
+ * Template management (rename/delete folder di disk app)
+ * ------------------------------------------------------------------- */
+
+/** Folder templates milik app aktif (dari automation.json dir). */
+function cc_templates_dir() {
+	$auto = cc_automation_path();
+	if ( ! $auto ) {
+		return '';
+	}
+	$dir = trailingslashit( dirname( $auto ) ) . 'templates';
+	return is_dir( $dir ) ? trailingslashit( $dir ) : '';
+}
+
+function cc_rest_templates_list() {
+	$dir  = cc_templates_dir();
+	$out  = array();
+	$list = cc_control_templates();
+	if ( ! is_wp_error( $list ) ) {
+		foreach ( (array) $list as $t ) {
+			$out[] = array( 'name' => basename( (string) ( $t['path'] ?? $t ) ), 'path' => (string) ( $t['path'] ?? $t ) );
+		}
+	}
+	return rest_ensure_response( array( 'templates' => $out, 'dir' => $dir ) );
+}
+
+/** Validasi path benar-benar di dalam folder templates app. */
+function cc_template_safe( $path ) {
+	$dir  = cc_templates_dir();
+	$path = untrailingslashit( wp_normalize_path( (string) $path ) );
+	if ( '' === $dir || '' === $path || 0 !== strpos( $path, untrailingslashit( $dir ) . '/' ) || false !== strpos( $path, '..' ) ) {
+		return new WP_Error( 'cc_tpl_safe', 'Path template tidak valid.' );
+	}
+	return $path;
+}
+
+function cc_rest_templates_rename( WP_REST_Request $request ) {
+	$path = cc_template_safe( $request->get_param( 'path' ) );
+	$name = sanitize_file_name( (string) $request->get_param( 'name' ) );
+	if ( is_wp_error( $path ) ) {
+		return $path;
+	}
+	if ( '' === $name || basename( $path ) === $name ) {
+		return new WP_Error( 'cc_tpl_name', 'Nama template kosong/sama.' );
+	}
+	$new = untrailingslashit( cc_templates_dir() ) . '/' . $name;
+	if ( file_exists( $new ) ) {
+		return new WP_Error( 'cc_tpl_dup', 'Template dengan nama itu sudah ada.' );
+	}
+	if ( ! @rename( $path, $new ) ) {
+		return new WP_Error( 'cc_tpl_rename', 'Gagal rename template.' );
+	}
+	return rest_ensure_response( array( 'ok' => true, 'path' => $new ) );
+}
+
+function cc_rest_templates_delete( WP_REST_Request $request ) {
+	$path = cc_template_safe( $request->get_param( 'path' ) );
+	if ( is_wp_error( $path ) ) {
+		return $path;
+	}
+	// Hapus rekursif — hanya di dalam folder templates (sudah divalidasi).
+	$it = new RecursiveIteratorIterator( new RecursiveDirectoryIterator( $path, FilesystemIterator::SKIP_DOTS ), RecursiveIteratorIterator::CHILD_FIRST );
+	foreach ( $it as $f ) {
+		$f->isDir() ? @rmdir( $f->getPathname() ) : @unlink( $f->getPathname() );
+	}
+	@rmdir( $path );
+	return rest_ensure_response( array( 'ok' => ! file_exists( $path ) ) );
 }
 
 /* ---------------------------------------------------------------------

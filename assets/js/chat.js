@@ -338,6 +338,7 @@ function ccChat() {
 			notice: '', noticeOk: false,
 			testResult: { openai: null, concat: null },
 			keySet: false, tokenSet: false, automation: '', providers: {},
+			templates: [], renaming: '', renameVal: '',
 			f: { ai_provider: 'openai', ai_key: '', ai_model: '', ai_baseurl: '', openai_key: '', openai_model: '', openai_prompt: '', concat_mode: 'auto', concat_addr: '', concat_token: '', workspace: '', copy_roots: '', max_iter: 15 },
 		},
 
@@ -352,6 +353,7 @@ function ccChat() {
 				this.st.automation = d.automation && d.automation.ok
 					? 'automation.json terdeteksi — ' + d.automation.address
 					: ((d.automation && d.automation.error) || 'automation.json tidak ditemukan.');
+				this.loadTemplates();
 				this.st.f = {
 					ai_provider: d.ai_provider || 'openai', ai_key: '', ai_model: d.ai_model || '', ai_baseurl: d.ai_baseurl || '',
 					openai_key: '', openai_model: d.openai_model || '', openai_prompt: d.openai_prompt || '',
@@ -375,6 +377,30 @@ function ccChat() {
 				this.loadStatus();
 			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
 			this.st.saving = false;
+		},
+
+		async loadTemplates() {
+			try {
+				const d = await ccApi('GET', '/settings/templates');
+				this.st.templates = d.templates || [];
+				this.$nextTick(() => this.icons());
+			} catch (e) { /* diam — list kosong */ }
+		},
+		async renameTemplate(t) {
+			const name = (this.st.renameVal || '').trim();
+			if (!name || name === t.name) { this.st.renaming = ''; return; }
+			try {
+				await ccPost('/settings/templates/rename', { path: t.path, name });
+				this.st.renaming = '';
+				await this.loadTemplates();
+			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
+		},
+		async deleteTemplate(t) {
+			if (!confirm('Hapus template "' + t.name + '"? Tidak bisa dikembalikan.')) { return; }
+			try {
+				await ccPost('/settings/templates/delete', { path: t.path });
+				await this.loadTemplates();
+			} catch (e) { this.st.notice = e.message; this.st.noticeOk = false; }
 		},
 
 		async testConn(which) {
