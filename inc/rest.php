@@ -386,7 +386,8 @@ function cc_rest_control_templates() {
 	if ( is_wp_error( $tpl ) ) {
 		return new WP_Error( $tpl->get_error_code(), $tpl->get_error_message(), array( 'status' => 502 ) );
 	}
-	return rest_ensure_response( array( 'items' => array_values( (array) $tpl ) ) );
+	$items = $tpl['templates'] ?? $tpl; // response bisa {templates:[...]} atau list langsung.
+	return rest_ensure_response( array( 'items' => array_values( (array) $items ) ) );
 }
 
 function cc_rest_control_folder( WP_REST_Request $request ) {
