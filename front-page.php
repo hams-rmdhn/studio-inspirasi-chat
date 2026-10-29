@@ -75,6 +75,7 @@ get_header();
 		<!-- ============ CONTROL VIEW ============ -->
 		<div x-show="mode === 'control'" x-cloak class="cc-ctl">
 			<div class="cc-ctl-card">
+				<h4 class="cc-sec">Sumber & Video</h4>
 				<div class="cc-field"><span>Sumber proyek</span>
 					<div class="cc-tabs">
 						<button type="button" @click="ctl.f.src = 'template'" :class="ctl.f.src === 'template' && 'cc-tab-on'" class="cc-tab">Dari template</button>
@@ -110,16 +111,21 @@ get_header();
 					<small class="cc-note">Tempel link <code>youtube.com</code>/<code>youtu.be</code> — video & subtitle-nya diunduh otomatis.</small>
 				</label>
 
-				<label class="cc-field"><span>Subtitle</span>
+				<h4 class="cc-sec">Subtitle</h4>
+				<label class="cc-field"><span>Caption</span>
 					<select x-model="ctl.f.cap_lang" class="cc-input">
 						<option value="id">Indonesia (auto-caption)</option>
 						<option value="en">English</option>
 						<option value="auto">Semua yang tersedia</option>
 						<option value="none">Tanpa subtitle</option>
 					</select>
-					<small class="cc-note">Atau isi file .srt manual di bawah (lebih didahulukan).</small>
+				</label>
+				<label class="cc-field"><span>File .srt manual <em class="cc-tag">opsional</em></span>
+					<input type="text" x-model="ctl.f.srt" class="cc-input" placeholder="/path/ke/subtitle.srt — override caption YouTube">
+					<small class="cc-note">Bila diisi, dipakai apa adanya tanpa potongan waktu.</small>
 				</label>
 
+				<h4 class="cc-sec">Segmen & Potong</h4>
 				<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
 					<div class="cc-filerow" style="gap:.75rem;margin-bottom:.4rem">
 						<label class="cc-note" style="display:flex;align-items:center;gap:.3rem"><input type="radio" x-model="ctl.f.mode" value="manual"> Manual</label>
@@ -164,13 +170,9 @@ get_header();
 					<small class="cc-note">Manual: format <code>m:ss</code>. Otomatis: AI pilih momen dari transkrip (YouTube) — judul dipakai sebagai nama proyek.</small>
 				</div>
 
+				<h4 class="cc-sec">Proyek & Aksi</h4>
 				<label class="cc-field"><span>Nama proyek</span>
 					<input type="text" x-model="ctl.f.name" class="cc-input" placeholder="reel-baru-01">
-				</label>
-
-				<label class="cc-field"><span>File .srt manual <em class="cc-tag">opsional</em></span>
-					<input type="text" x-model="ctl.f.srt" class="cc-input" placeholder="/path/ke/subtitle.srt — override caption YouTube">
-					<small class="cc-note">Bila diisi, dipakai apa adanya tanpa potongan waktu.</small>
 				</label>
 
 				<div class="cc-field"><span>Aksi akhir</span>

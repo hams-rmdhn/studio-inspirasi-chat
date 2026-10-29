@@ -369,6 +369,12 @@ body {
 	border-radius: .3rem; padding: .08rem .35rem;
 }
 .cc-note { font-size: .72rem; color: var(--cc-muted); margin: 0; }
+.cc-sec {
+	font-size: .72rem; font-weight: 700; letter-spacing: .06em; text-transform: uppercase;
+	color: var(--cc-muted); margin: 0 0 .6rem; padding-top: .9rem;
+	border-top: 1px solid var(--cc-border);
+}
+.cc-sec:first-child { padding-top: 0; border-top: 0; }
 .cc-input-sm { max-width: 8rem; }
 .cc-notice {
 	margin: 0 0 .7rem; padding: .55rem .8rem; border-radius: 999px;
