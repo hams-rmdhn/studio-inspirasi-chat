@@ -334,7 +334,7 @@ function ccChat() {
 
 		/* ---------------- settings modal ---------------- */
 		st: {
-			open: false, tab: 'openai', saving: false, testing: '',
+			open: false, tab: 'ai', saving: false, testing: '',
 			notice: '', noticeOk: false,
 			testResult: { openai: null, concat: null },
 			keySet: false, tokenSet: false, automation: '', providers: {},
@@ -343,7 +343,7 @@ function ccChat() {
 		},
 
 		async openSettings() {
-			this.st.open = true;
+			this.st.open = true; this.st.tab = 'ai';
 			this.st.notice = '';
 			try {
 				const d = await ccApi('GET', '/settings');
