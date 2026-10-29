@@ -498,12 +498,14 @@ function ccChat() {
 
 		jumpBottom() {
 			const t = this.threadEl();
-			if (!t) { return; }
-			// scrollIntoView ke pesan terakhir — menelusuri container scroll mana
-			// pun yang sebenarnya; scrollTo langsung sebagai cadangan.
-			const last = t.querySelector('.cc-thread-in > *:last-child') || t.lastElementChild;
-			if (last) { last.scrollIntoView({ behavior: 'smooth', block: 'end' }); }
-			setTimeout(() => { t.scrollTop = t.scrollHeight; this.updateJump(); }, 500);
+			const go = () => {
+				const last = t ? (t.querySelector('.cc-thread-in > *:last-child') || t.lastElementChild) : null;
+				if (last) { last.scrollIntoView({ behavior: 'smooth', block: 'end' }); }
+				if (t) { t.scrollTop = t.scrollHeight; }
+				window.scrollTo(0, document.documentElement.scrollHeight);
+			};
+			go();
+			setTimeout(() => { go(); this.updateJump(); }, 350);
 		},
 		scrollToLastUser() {
 			const t = this.threadEl();

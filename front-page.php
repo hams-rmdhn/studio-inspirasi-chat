@@ -58,7 +58,7 @@ get_header();
 			<button type="button" @click="sideOpen = !sideOpen" class="cc-burger" aria-label="Sidebar">
 				<i data-lucide="panel-left" class="w-4 h-4"></i>
 			</button>
-			<h1 class="cc-title" x-text="mode === 'control' ? 'Control' : (activeTitle || 'Studio Inspirasi Chat')"></h1>
+			<h1 class="cc-title" x-text="mode === 'control' ? 'Control' : ((activeTitle || 'Studio Inspirasi Chat').replace(/-/g,' '))"></h1>
 			<div class="cc-mode" role="tablist" aria-label="Mode">
 				<button type="button" @click="setMode('chat')" :class="mode === 'chat' ? 'cc-mode-on' : ''" class="cc-mode-btn">Chat</button>
 				<button type="button" @click="setMode('control')" :class="mode === 'control' ? 'cc-mode-on' : ''" class="cc-mode-btn">Control</button>
