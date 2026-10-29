@@ -320,7 +320,10 @@ function cc_rest_templates_list() {
 	$list = cc_control_templates();
 	if ( ! is_wp_error( $list ) ) {
 		foreach ( (array) $list as $t ) {
-			$out[] = array( 'name' => basename( (string) ( $t['path'] ?? $t ) ), 'path' => (string) ( $t['path'] ?? $t ) );
+			$path = (string) ( $t['path'] ?? $t );
+			if ( '' !== $path && is_dir( $path ) ) {
+				$out[] = array( 'name' => basename( $path ), 'path' => $path );
+			}
 		}
 	}
 	return rest_ensure_response( array( 'templates' => $out, 'dir' => $dir ) );
@@ -349,6 +352,7 @@ function cc_rest_templates_rename( WP_REST_Request $request ) {
 	if ( file_exists( $new ) ) {
 		return new WP_Error( 'cc_tpl_dup', 'Template dengan nama itu sudah ada.' );
 	}
+	delete_transient( 'cc_tpl_probe' );
 	if ( ! @rename( $path, $new ) ) {
 		return new WP_Error( 'cc_tpl_rename', 'Gagal rename template.' );
 	}
@@ -368,6 +372,7 @@ function cc_rest_templates_delete( WP_REST_Request $request ) {
 	foreach ( $it as $f ) {
 		$f->isDir() ? @rmdir( $f->getPathname() ) : @unlink( $f->getPathname() );
 	}
+	delete_transient( 'cc_tpl_probe' );
 	@rmdir( $path );
 	return rest_ensure_response( array( 'ok' => ! file_exists( $path ) ) );
 }
