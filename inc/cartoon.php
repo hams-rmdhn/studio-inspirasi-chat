@@ -494,6 +494,11 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			$height = (float) ( $spr[0]['height'] ?? 0.7 ) ?: 0.7;
 			$pos_x  = (float) ( $r['x'] ?? ( $char_x[ $cn ] ?? 0.0 ) );
 
+			// Karakter menghadap kiri — flip bila harus menghadap kanan:
+			// posisi di sisi kiri (percakapan) atau aksi jalan ke kanan.
+			$flip  = 'jalan' === $act ? 'kanan' === (string) ( $r['dir'] ?? 'kanan' ) : $pos_x < 0;
+			$fpat  = $flip ? array( 'flipH' => true ) : null;
+
 			if ( 'bicara' === $act || 'diam' === $act ) {
 				$diam   = cc_cartoon_pick_sprite( $spr, $look, $expr, 'diam' );
 				$bicara = cc_cartoon_pick_sprite( $spr, $look, $expr, 'bicara' );
@@ -513,7 +518,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					if ( ! $imp ) {
 						continue;
 					}
-					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ) );
+					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ), $fpat );
 				}
 				// Audio dialog.
 				if ( 'bicara' === $act && '' !== (string) ( $r['audio'] ?? '' ) && is_file( (string) $r['audio'] ) ) {
@@ -545,7 +550,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					}
 					$st_at = $rt + $k * $seg;
 					$ox    = $pos_x + ( $x1 - $pos_x ) * ( $k / max( 1, $n - 1 ) );
-					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox, $ai_frame ) );
+					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox, $ai_frame ), $fpat );
 					// SFX step sinkron tiap pergantian pose.
 					if ( $step_sfx ) {
 						if ( '' === $sfx_tr ) {
@@ -563,7 +568,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					$scale = 'zoom' === $act ? $height * 1.15 : $height;
 					$add_clip( $trk, $imp, $rt, $dur,
 						cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ),
-						array( 'visualMotion' => array( 'entrance' => 'masuk' === $act ? 2 : 0, 'exit' => 'keluar' === $act ? 2 : 0, 'duration' => 0.35 ) ) );
+						array_merge( array( 'visualMotion' => array( 'entrance' => 'masuk' === $act ? 2 : 0, 'exit' => 'keluar' === $act ? 2 : 0, 'duration' => 0.35 ) ), $flip ? array( 'flipH' => true ) : array() ) );
 				}
 			}
 			// SFX non-step di awal baris (pilihan AI atau manual).
