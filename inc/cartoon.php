@@ -486,9 +486,10 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 		}
 
 		// Baris aksi — baris `par` berjalan bersamaan dengan baris sebelumnya.
-		$rt         = $st0;
-		$rt_prev    = $st0;
-		$char_lastx = $char_x;
+		$rt      = $st0;
+		$rt_prev = $st0;
+		$cover   = array(); // cn => [[start,end],…] rentang aksi terpasang
+		$xtl     = array(); // cn => [[t_end,x],…] riwayat posisi karakter
 		foreach ( $rows as $i => $r ) {
 			$cn     = (string) ( $r['char'] ?? '' );
 			$act    = (string) ( $r['action'] ?? 'diam' );
@@ -611,38 +612,54 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			if ( 'bicara' === $act && '' !== trim( (string) ( $r['text'] ?? '' ) ) ) {
 				$cap_items[] = array( $row_t, $row_t + $dur, (string) $r['text'] );
 			}
-			// Karakter lain tetap hadir diam di posisi terakhirnya selama baris ini
-			// — KECUALI karakter yang beraksi di baris `par` menempel span ini
-			// (klip idlenya akan menutupi posisi aksi mereka).
-			$par_chars = array();
-			for ( $j = $i + 1; $j < count( $rows ); $j++ ) {
-				if ( empty( $rows[ $j ]['par'] ) ) {
-					break;
-				}
-				$par_chars[] = (string) ( $rows[ $j ]['char'] ?? '' );
-			}
-			foreach ( $scene_chars as $cn2 ) {
-				if ( '' === $cn2 || $cn2 === $cn || in_array( $cn2, $par_chars, true ) ) {
-					continue;
-				}
-				$spr2 = (array) ( $chars_cat['chars'][ $cn2 ]['sprites'] ?? array() );
-				$look2 = (string) ( ( $splan['looks'] ?? array() )[ $cn2 ] ?? 'default' );
-				$spd  = cc_cartoon_pick_sprite( $spr2, $look2, 'netral', 'diam' );
-				if ( ! $spd || ! ( $imp2 = $import_file( $spd['file'] ) ) ) {
-					continue;
-				}
-				$lx   = (float) ( $char_lastx[ $cn2 ] ?? $char_x[ $cn2 ] ?? 0.0 );
-				$h2   = (float) ( $spr2[0]['height'] ?? 0.7 ) ?: 0.7;
-				$add_clip( (string) ( $char_tracks[ $cn2 ] ?? '' ), $imp2, $row_t, $dur,
-					cc_cartoon_char_tf( $spd['file'], $h2, $feet_line, $lx, $ai_frame ),
-					$lx < 0 ? array( 'flipH' => true ) : null );
-			}
-			// Perbarui posisi akhir karakter aksi.
-			$char_lastx[ $cn ] = 'jalan' === $act ? (float) ( $r['x2'] ?? -$pos_x ) : $pos_x;
+			// Rekam rentang terpakai & posisi akhir karakter untuk gap-fill nanti.
+			$cover[ $cn ][] = array( $row_t, $row_t + $dur );
+			$xtl[ $cn ][]   = array( $row_t + $dur, 'jalan' === $act ? (float) ( $r['x2'] ?? -$pos_x ) : $pos_x );
 			// Baris `par` tak memajukan timeline — berjalan bersama baris sebelumnya.
 			if ( empty( $r['par'] ) ) {
 				$rt_prev = $rt;
 				$rt     += $dur;
+			}
+		}
+		// Gap-fill diam: setiap karakter hadir sepanjang scene di celah yang
+		// benar-benar kosong pada track-nya, di posisi x terakhir sebelum celah.
+		$send = $st0 + $scene_dur;
+		foreach ( $scene_chars as $cn2 ) {
+			if ( '' === $cn2 ) {
+				continue;
+			}
+			$spr2  = (array) ( $chars_cat['chars'][ $cn2 ]['sprites'] ?? array() );
+			$look2 = (string) ( ( $splan['looks'] ?? array() )[ $cn2 ] ?? 'default' );
+			$spd   = cc_cartoon_pick_sprite( $spr2, $look2, 'netral', 'diam' );
+			if ( ! $spd || ! ( $imp2 = $import_file( $spd['file'] ) ) ) {
+				continue;
+			}
+			$h2    = (float) ( $spr2[0]['height'] ?? 0.7 ) ?: 0.7;
+			$trk2  = (string) ( $char_tracks[ $cn2 ] ?? '' );
+			$hist  = (array) ( $xtl[ $cn2 ] ?? array() );
+			$cur   = $st0;
+			$spans2 = (array) ( $cover[ $cn2 ] ?? array() );
+			usort( $spans2, function ( $a, $b ) { return $a[0] <=> $b[0]; } );
+			$gaps = array();
+			foreach ( $spans2 as $sp2 ) {
+				if ( $sp2[0] > $cur + 0.05 ) {
+					$gaps[] = array( $cur, $sp2[0] );
+				}
+				$cur = max( $cur, $sp2[1] );
+			}
+			if ( $cur < $send - 0.05 ) {
+				$gaps[] = array( $cur, $send );
+			}
+			foreach ( $gaps as $g ) {
+				$gx = (float) ( $char_x[ $cn2 ] ?? 0.0 );
+				foreach ( $hist as $hx ) {
+					if ( $hx[0] <= $g[0] + 0.05 ) {
+						$gx = $hx[1];
+					}
+				}
+				$add_clip( $trk2, $imp2, $g[0], $g[1] - $g[0],
+					cc_cartoon_char_tf( $spd['file'], $h2, $feet_line, $gx, $ai_frame ),
+					$gx < 0 ? array( 'flipH' => true ) : null );
 			}
 		}
 		$t += $scene_dur;
