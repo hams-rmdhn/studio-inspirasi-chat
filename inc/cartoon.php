@@ -81,6 +81,11 @@ function cc_cartoon_catalog_chars( $dir ) {
 			if ( in_array( $var, array( 'kanan', 'kiri' ), true ) && count( $toks ) > 1 ) {
 				$var = $toks[ count( $toks ) - 2 ] . '_' . $var;
 			}
+			// Token tak dikenal (mis. nama karakter saja) → anggap 'diam'.
+			$known = array( 'diam', 'bicara', 'jalan', 'jalan_kanan', 'jalan_kiri', 'masuk', 'keluar', 'zoom', 'kaget', 'senang', 'sedih', 'marah', 'netral' );
+			if ( ! in_array( $var, $known, true ) ) {
+				$var = 'diam';
+			}
 			$w[]        = 'PNG tak tercatat di CSV: ' . $base;
 			$sprites[]  = array( 'file' => $p, 'look' => 'default', 'ekspresi' => 'netral', 'varian' => $var ?: 'diam', 'height' => 0.7, 'desc' => $stem );
 		}
@@ -187,7 +192,8 @@ function cc_cartoon_pick_sprite( $sprites, $look, $expr, $varian ) {
 			return $sp;
 		}
 	}
-	return null;
+	// Fallback terakhir: sprite apa pun — karakter satu PNG tetap tampil.
+	return $sprites[0] ?? null;
 }
 
 /** Pilihan AI per scene: look lock per karakter + ekspresi/sfx/broll per baris. */
