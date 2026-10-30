@@ -884,7 +884,9 @@ function cc_cartoon_plan_story( $prompt, $cat ) {
 	$sys = 'Anda sutradara animasi kartun eksplainer. Susun storyboard utuh (1-6 scene) dari prompt user + katalog aset. '
 		. 'Jawab HANYA JSON: {"scenes":[{"bg_id":"bg1","chars":["nama"],"looks":{"nama":"look"},"transition_out":"fade",'
 		. '"rows":[{"kind":"vo","vo_id":"vo1","expr":"netral","sfx_id":"","broll_id":"","broll_start":0} ATAU '
-		. '{"char":"nama","action":"jalan|zoom|masuk|keluar|diam","dir":"kanan|kiri","dur":2,"expr":"netral","sfx_id":"","broll_id":"","broll_start":0}]}]}. '
+		. '{"char":"nama","action":"jalan|zoom|masuk|keluar|diam","dir":"kanan|kiri","dur":2,"x":-0.6,"x2":0.25,"par":false,"expr":"netral","sfx_id":"","broll_id":"","broll_start":0}]}]}. '
+		. 'x/x2 = posisi horizontal karakter sebagai offset fraksi frame dari pusat (-0.5 tepi kiri, 0 tengah, +0.5 tepi kanan); jalan menginterpolasi x→x2 — WAJIB diisi agar karakter benar-benar bergerak (mis. masuk dari kiri: x=-0.7 → x2=-0.25); '
+		. 'par=true = aksi berjalan BERSAMAAN dengan baris sebelumnya (dua karakter masuk bersama); '
 		. 'Aturan: tiap vo_id WAJIB muncul tepat sekali sebagai baris kind:vo (urutan dialog sesuai naskah); '
 		. 'bg_id/chars/looks/expr/sfx_id/broll_id HANYA dari katalog; aksi non-dialog hanya jalan|zoom|masuk|keluar|diam; field kosong boleh dihilangkan.';
 	$usr = "PROMPT:\n{$prompt}\n\nKARAKTER: " . wp_json_encode( $chars_brief )
@@ -928,11 +930,22 @@ function cc_cartoon_story_scenes( $jscenes, $cat ) {
 			'broll_start' => (float) ( $jr['broll_start'] ?? 0 ),
 		);
 	};
-	$vo_row = function ( $v ) {
+	// Posisi x per karakter — bergantian kiri/kanan, konsisten lintas scene.
+	$cxmap = array();
+	$cx_of = function ( $cn ) use ( &$cxmap ) {
+		if ( '' === $cn ) {
+			return 0.0;
+		}
+		if ( ! isset( $cxmap[ $cn ] ) ) {
+			$cxmap[ $cn ] = count( $cxmap ) % 2 ? 0.25 : -0.25;
+		}
+		return $cxmap[ $cn ];
+	};
+	$vo_row = function ( $v ) use ( $cx_of ) {
 		return array(
 			'char' => (string) $v['char'], 'action' => 'bicara',
 			'dur'  => max( 0.5, (float) $v['duration'] ), 'audio' => (string) $v['file'],
-			'text' => (string) $v['text'], 'dir' => 'kanan', 'x' => 0, 'x2' => 0,
+			'text' => (string) $v['text'], 'dir' => 'kanan', 'x' => $cx_of( (string) $v['char'] ), 'x2' => 0,
 		);
 	};
 
@@ -974,14 +987,19 @@ function cc_cartoon_story_scenes( $jscenes, $cat ) {
 			if ( ! in_array( $act, array( 'diam', 'jalan', 'zoom', 'masuk', 'keluar' ), true ) ) {
 				$act = 'diam';
 			}
+			$cn2  = sanitize_key( (string) ( $jr['char'] ?? '' ) );
+			$dirv = 'kiri' === ( $jr['dir'] ?? '' ) ? 'kiri' : 'kanan';
+			$x2v  = isset( $jr['x2'] ) ? (float) $jr['x2'] : $cx_of( $cn2 );
+			$xv   = isset( $jr['x'] ) ? (float) $jr['x'] : ( 'jalan' === $act ? $x2v - 0.45 * ( 'kanan' === $dirv ? 1 : -1 ) : $x2v );
 			$rows[] = array(
-				'char'   => sanitize_key( (string) ( $jr['char'] ?? '' ) ),
+				'char'   => $cn2,
 				'action' => $act,
 				'dur'    => max( 0.5, (float) ( $jr['dur'] ?? 2 ) ),
 				'audio'  => '', 'text' => '',
-				'dir'    => 'kiri' === ( $jr['dir'] ?? '' ) ? 'kiri' : 'kanan',
-				'x'      => (float) ( $jr['x'] ?? 0 ),
-				'x2'     => (float) ( $jr['x2'] ?? 0 ),
+				'dir'    => $dirv,
+				'x'      => $xv,
+				'x2'     => $x2v,
+				'par'    => ! empty( $jr['par'] ),
 			);
 			$prows[] = $prow( $jr );
 		}

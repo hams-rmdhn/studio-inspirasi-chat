@@ -542,6 +542,7 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 				'x2'      => (float) ( $r['x2'] ?? 0 ),
 				'sfx_id'  => sanitize_key( (string) ( $r['sfx_id'] ?? '' ) ),
 				'broll_id'=> sanitize_key( (string) ( $r['broll_id'] ?? '' ) ),
+				'par'     => ! empty( $r['par'] ),
 			);
 		}
 		if ( ! $rows ) {
