@@ -29,6 +29,7 @@ function cc_register_routes() {
 		array( '/control/templates', 'GET', 'cc_rest_control_templates' ),
 		array( '/control/folder', 'GET', 'cc_rest_control_folder' ),
 		array( '/control/run', 'POST', 'cc_rest_control_run' ),
+		array( '/control/edl-review', 'POST', 'cc_rest_edl_review' ),
 		array( '/settings', 'GET', 'cc_rest_settings_get' ),
 		array( '/settings', 'POST', 'cc_rest_settings_save' ),
 		array( '/settings/test', 'POST', 'cc_rest_settings_test' ),
@@ -47,6 +48,17 @@ function cc_register_routes() {
 			)
 		);
 	}
+	// Stream media — <video src> tidak bisa mengirim nonce; autentikasi
+	// ditangani di dalam handler via HMAC + whitelist ekstensi.
+	register_rest_route(
+		'concat/v1',
+		'/media/stream',
+		array(
+			'methods'             => 'GET',
+			'callback'            => 'cc_rest_media_stream',
+			'permission_callback' => '__return_true',
+		)
+	);
 }
 
 /** Owned session or 404-shaped error (don't leak existence). */
@@ -445,6 +457,7 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'broll_motion_in'  => sanitize_key( (string) $request->get_param( 'broll_motion_in' ) ),
 		'broll_motion_out' => sanitize_key( (string) $request->get_param( 'broll_motion_out' ) ),
 		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
+		'edl_review'    => ! empty( $request->get_param( 'edl_review' ) ) && 'false' !== $request->get_param( 'edl_review' ),
 		'segments'      => array(),
 	);
 	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly' ), true ) ) {
@@ -584,5 +597,12 @@ function cc_rest_job_cancel( WP_REST_Request $request ) {
 	}
 	cc_job_cancel( $job->id );
 	cc_message_update( $job->message_id, array( 'body' => 'Perintah dibatalkan oleh pengguna.', 'status' => 'failed' ) );
+	// Kartu review pending ikut settle — jangan tampil menunggu selamanya.
+	global $wpdb;
+	$wpdb->update(
+		cc_table( 'messages' ),
+		array( 'status' => 'cancelled' ),
+		array( 'session_id' => (int) $job->session_id, 'role' => 'review', 'status' => 'pending' )
+	);
 	return rest_ensure_response( array( 'ok' => true, 'status' => 'cancelled' ) );
 }

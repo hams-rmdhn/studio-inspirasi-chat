@@ -284,6 +284,10 @@ get_header();
 							<textarea x-model="ctl.f.broll_prompt" rows="2" class="cc-input" placeholder="Misal: tampilkan B-roll alam saat membahas ketenangan, gunakan sfx whoosh di tiap transisi…"></textarea>
 							<small class="cc-note">B-Roll otomatis di-fit memenuhi kanvas (fill) dan audionya di-mute agar suara utama jernih.</small>
 						</label>
+						<label class="cc-check"><input type="checkbox" x-model="ctl.f.edl_review">
+							<span><strong>Review rencana B-Roll sebelum dipasang</strong><br>
+							<small class="cc-note">Pipeline berjeda setelah AI menyusun sisipan — Anda bisa melihat preview tiap klip, mengedit, lalu melanjutkan rakitan.</small></span>
+						</label>
 					</div>
 				</template>
 

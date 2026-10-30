@@ -185,7 +185,7 @@ function cc_message_add( $session_id, $role, $body = '', $meta = null, $status =
 		cc_table( 'messages' ),
 		array(
 			'session_id' => absint( $session_id ),
-			'role'       => in_array( $role, array( 'user', 'assistant', 'task' ), true ) ? $role : 'user',
+			'role'       => in_array( $role, array( 'user', 'assistant', 'task', 'review' ), true ) ? $role : 'user',
 			'body'       => (string) $body,
 			'meta'       => null === $meta ? null : wp_json_encode( $meta ),
 			'status'     => sanitize_key( $status ),
@@ -317,13 +317,18 @@ function cc_jobs_reap() {
 	// instantly. Compute cutoffs in PHP on the same clock instead.
 	$cut_queued = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 600 );
 	$cut_active = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 1200 );
+	// Job 'waiting' (menunggu review EDL) diberi jendela lebih panjang —
+	// 60 menit tanpa interaksi baru dianggap terbengkalai.
+	$cut_wait   = gmdate( 'Y-m-d H:i:s', current_time( 'timestamp' ) - 3600 );
 	$stale = $wpdb->get_results(
 		$wpdb->prepare(
 			"SELECT id, session_id, message_id FROM {$t}
 			 WHERE ( status = 'queued' AND created_at < %s )
-			    OR ( status IN ('running','waiting') AND COALESCE(updated_at, started_at, created_at) < %s )",
+			    OR ( status = 'running' AND COALESCE(updated_at, started_at, created_at) < %s )
+			    OR ( status = 'waiting' AND COALESCE(updated_at, started_at, created_at) < %s )",
 			$cut_queued,
-			$cut_active
+			$cut_active,
+			$cut_wait
 		)
 	);
 	foreach ( (array) $stale as $j ) {
@@ -332,8 +337,10 @@ function cc_jobs_reap() {
 			$wpdb->update( $m, array( 'status' => 'failed', 'body' => 'Maaf — proses terhenti di tengah jalan. Silakan coba lagi.' ), array( 'id' => $j->message_id, 'status' => 'queued' ) );
 		}
 		// Any still-spinning task cards in this session settle to failed —
-		// both the column AND the meta the renderer reads.
+		// both the column AND the meta the renderer reads. Kartu review
+		// pending ikut digagalkan agar tidak menunggu selamanya.
 		$wpdb->update( $m, array( 'status' => 'failed' ), array( 'session_id' => $j->session_id, 'role' => 'task', 'status' => 'running' ) );
+		$wpdb->update( $m, array( 'status' => 'failed' ), array( 'session_id' => $j->session_id, 'role' => 'review', 'status' => 'pending' ) );
 		$wpdb->query(
 			$wpdb->prepare(
 				"UPDATE {$m} SET meta = REPLACE(meta, '\"status\":\"running\"', '\"status\":\"failed\"')

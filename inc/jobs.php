@@ -61,6 +61,10 @@ function cc_job_run_worker( $job_id ) {
 			$res = cc_control_run( $job );
 			if ( is_wp_error( $res ) ) {
 				$finish( 'failed', 'Maaf — ' . $res->get_error_message() );
+			} elseif ( ! empty( $res['_waiting'] ) ) {
+				// Gerbang review EDL — payload + kartu sudah disiapkan;
+				// tahan job sampai user memutuskan lewat /control/edl-review.
+				cc_job_update( $job_id, array( 'status' => 'waiting' ) );
 			} else {
 				$finish( 'done', (string) ( $res['body'] ?? '' ), $res['meta'] ?? null );
 			}
@@ -87,7 +91,8 @@ function cc_agent_turn( $job ) {
 	$rows     = cc_messages_for_session( $job->session_id );
 	$history  = array();
 	foreach ( $rows as $m ) {
-		if ( 'task' === $m->role || 'queued' === $m->status ) {
+		// 'task' = kartu progres, 'review' = kartu EDL — bukan pesan untuk AI.
+		if ( 'task' === $m->role || 'review' === $m->role || 'queued' === $m->status || 'waiting' === $m->status ) {
 			continue;
 		}
 		$clip = mb_strlen( $m->body ) > 1500 ? mb_substr( $m->body, 0, 1500 ) . '…' : $m->body;

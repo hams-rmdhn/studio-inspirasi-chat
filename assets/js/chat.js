@@ -41,6 +41,93 @@ function ccEscape(s) {
 	return String(s).replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
 }
 
+/**
+ * Kartu review EDL — dipakai markup yang di-inject server-side lewat
+ * x-html (Alpine v3 meng-inisialisasi node injeksi via MutationObserver).
+ * Data awal dibaca dari JSON embed .cc-edl-data; edits ditahan lokal
+ * sampai user menekan Terapkan / Susun ulang / Batalkan.
+ */
+function ccEdlCard(el) {
+	let d = {};
+	try { d = JSON.parse(el.querySelector('.cc-edl-data').textContent || '{}'); } catch (e) {}
+	const segs = (d.segs || []).map(function (s) {
+		return { label: s.label || '', dur: +s.dur || 0, items: (s.items || []).map(function (it) { return Object.assign({}, it); }) };
+	});
+	return {
+		segs: segs,
+		brolls: (d.catalog && d.catalog.brolls) || [],
+		sfxs: (d.catalog && d.catalog.sfxs) || [],
+		jobId: d.job_id || 0,
+		state: d.state || 'pending',
+		busy: false, err: '', note: '', open: '',
+		fmtT(sec) {
+			sec = Math.max(0, +sec || 0);
+			const m = Math.floor(sec / 60), s = (sec % 60);
+			return m + ':' + (s < 10 ? '0' : '') + s.toFixed(1);
+		},
+		togVid(si, ii) {
+			const k = si + '-' + ii;
+			this.open = this.open === k ? '' : k;
+			this.$nextTick(function () {
+				const v = el.querySelector('.cc-edl-vid video');
+				if (v && v.currentTime < 0.05) { try { v.currentTime = 0.05; } catch (e) {} }
+			});
+		},
+		delItem(si, ii) { this.segs[si].items.splice(ii, 1); },
+		addItem(si) {
+			const b = this.brolls[0];
+			if (!b) { return; }
+			this.segs[si].items.push({
+				broll_id: b.id, name: b.name, tl_start: 0,
+				dur: Math.min(4, b.dur || 4), src_start: 0,
+				sfx_id: '', sfx_name: '', reason: 'ditambahkan manual',
+				video: b.video, thumb: '',
+			});
+		},
+		swapBroll(si, ii) {
+			const it = this.segs[si].items[ii];
+			const b = this.brolls.find(function (x) { return x.id === it.broll_id; });
+			if (!b) { return; }
+			it.name = b.name; it.video = b.video; it.thumb = '';
+			if (it.src_start + it.dur > b.dur) { it.dur = Math.max(0.3, b.dur - it.src_start); }
+		},
+		payload() {
+			const out = {};
+			this.segs.forEach(function (s, si) {
+				out[si] = s.items.map(function (it) {
+					return {
+						broll_id: it.broll_id,
+						timeline_start: +it.tl_start || 0,
+						duration: +it.dur || 0,
+						source_start: +it.src_start || 0,
+						sfx_id: it.sfx_id || '',
+						reason: it.reason || '',
+					};
+				});
+			});
+			return out;
+		},
+		async act(action) {
+			if (this.busy || 'pending' !== this.state) { return; }
+			this.busy = true; this.err = '';
+			try {
+				const r = await ccPost('/control/edl-review', {
+					job_id: this.jobId, action: action, note: this.note, items: this.payload(),
+				});
+				if ('applied' === r.state || 'cancelled' === r.state) { this.state = r.state; }
+				if ('pending' === r.state && 'replan' === action) {
+					// Kartu baru diposting server — poll menampilkannya.
+					this.state = 'replaced';
+				}
+			} catch (e) { this.err = e.message; }
+			this.busy = false;
+		},
+		apply() { this.act('apply'); },
+		replan() { this.act('replan'); },
+		cancelReview() { this.act('cancel'); },
+	};
+}
+
 function ccChat() {
 	return {
 		sessions: [], activeId: 0, activeTitle: '',
@@ -229,6 +316,7 @@ function ccChat() {
 				workflow: 'clip', src: 'template', template: '', template_label: '', aspect: '9:16',
 				file: '', vo_file: '', broll_dir: '', sfx_dir: '', broll_vision: false,
 				broll_pacing: 'calm', broll_prompt: '', broll_motion_in: 'slide', broll_motion_out: 'fade',
+				edl_review: true,
 				mode: 'manual', moment_count: 3, moment_min: 30, moment_max: 90,
 				silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1,
 				segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff',
@@ -366,6 +454,7 @@ function ccChat() {
 					broll_vision: f.broll_vision ? '1' : '',
 					broll_pacing: f.broll_pacing, broll_prompt: f.broll_prompt,
 					broll_motion_in: f.broll_motion_in, broll_motion_out: f.broll_motion_out,
+					edl_review: f.edl_review ? '1' : '',
 					mode: f.mode, moment_count: f.moment_count, moment_min: f.moment_min, moment_max: f.moment_max,
 					silence_cut: f.silence_cut ? '1' : '', silence_db: f.silence_db, silence_min: f.silence_min, silence_pad: f.silence_pad,
 					session_id: this.activeId || this.ctl.sessionId || 0,
@@ -503,7 +592,8 @@ function ccChat() {
 			// keep refreshing without refetching the whole window.
 			const watch = this.messages
 				.filter((m) => m.status === 'queued' || m.status === 'running'
-					|| (m.role === 'task' && m.status !== 'done' && m.status !== 'failed'))
+					|| (m.role === 'task' && m.status !== 'done' && m.status !== 'failed')
+					|| (m.role === 'review' && m.status === 'pending'))
 				.map((m) => m.id).join(',');
 			try {
 				const d = await ccApi('GET', '/sessions/' + this.activeId + '/messages?after=' + maxId + '&watch=' + watch);

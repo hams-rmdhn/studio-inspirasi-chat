@@ -763,7 +763,7 @@ function cc_assembly_apply_edl( $cx, $project, $edl, $brolls, $sfxs, $workflow =
  * Jalankan workflow 'assembly' penuh (1 Voice Over MP3 + koleksi B-Roll + SFX → 1 proyek utuh).
  * Returns array{body:string, meta:array}|WP_Error.
  */
-function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id ) {
+function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id, $job = null ) {
 	$vo_file   = wp_normalize_path( (string) ( $p['vo_file'] ?? $p['file'] ?? '' ) );
 	$broll_dir = wp_normalize_path( (string) ( $p['broll_dir'] ?? '' ) );
 	$sfx_dir   = wp_normalize_path( (string) ( $p['sfx_dir'] ?? '' ) );
@@ -814,27 +814,48 @@ function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id ) {
 		);
 	}
 
-	// 3. AI Director menyusun EDL.
-	$edl = $step(
-		'AI Director menyusun storyboard (' . count( $catalog['brolls'] ) . ' bahan video)',
-		function () use ( $srt_txt, $vo_dur, $catalog, $p ) {
-			$plan = cc_assembly_plan_edl(
-				$srt_txt,
-				$vo_dur,
-				$catalog['brolls'],
-				$catalog['sfxs'],
-				array(
-					'workflow' => 'assembly',
-					'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
-					'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
-				)
-			);
-			if ( empty( $plan ) ) {
-				return new WP_Error( 'cc_edl', 'Gagal menyusun jadwal klip B-Roll.' );
+	// 3. AI Director menyusun EDL — dilewati bila _edl dari review disetujui.
+	if ( array_key_exists( '_edl', $p ) ) {
+		$edl = (array) $p['_edl'];
+	} else {
+		$edl = $step(
+			'AI Director menyusun storyboard (' . count( $catalog['brolls'] ) . ' bahan video)',
+			function () use ( $srt_txt, $vo_dur, $catalog, $p ) {
+				$plan = cc_assembly_plan_edl(
+					$srt_txt,
+					$vo_dur,
+					$catalog['brolls'],
+					$catalog['sfxs'],
+					array(
+						'workflow' => 'assembly',
+						'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
+						'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
+					)
+				);
+				if ( empty( $plan ) ) {
+					return new WP_Error( 'cc_edl', 'Gagal menyusun jadwal klip B-Roll.' );
+				}
+				return $plan;
 			}
-			return $plan;
+		);
+
+		/* Gerbang review — jeda SEBELUM proyek dibuat; resume menyuntik
+		 * _edl hasil edit sehingga blok ini dilewati sepenuhnya. */
+		if ( ! empty( $p['edl_review'] ) && ! empty( $edl ) && $job && function_exists( 'cc_edl_review_pause' ) ) {
+			$seg_plans = array(
+				0 => array(
+					'label' => basename( (string) $vo_file ),
+					'dur'   => (float) $vo_dur,
+					'keeps' => array(),
+					'srt'   => $srt_txt,
+					'items' => $edl,
+				),
+			);
+			$p['_segs'] = array( array( 'start' => 0.0, 'end' => (float) $vo_dur ) );
+			cc_edl_review_pause( $job, $session_id, $p, $seg_plans, $catalog );
+			return array( '_waiting' => true );
 		}
-	);
+	}
 
 	// 4. Siapkan proyek dari template atau proyek baru.
 	$project = $step(

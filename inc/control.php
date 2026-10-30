@@ -801,6 +801,10 @@ function cc_control_run( $job ) {
 	if ( ! is_array( $p ) ) {
 		return new WP_Error( 'cc_payload', 'Payload job tidak valid.' );
 	}
+	// Resume setelah review EDL — konteks plan disuntik kembali ke $p.
+	if ( function_exists( 'cc_edl_review_resume' ) ) {
+		cc_edl_review_resume( $p );
+	}
 	$session_id = (int) $job->session_id;
 	$cx         = new CC_Concat();
 	$ctx        = array( 'cx' => $cx );
@@ -826,8 +830,12 @@ function cc_control_run( $job ) {
 
 	// Mode 'assembly' (VO MP3 + koleksi B-Roll + SFX → 1 proyek utuh) punya jalur sendiri.
 	if ( 'assembly' === ( $p['workflow'] ?? 'clip' ) && function_exists( 'cc_assembly_run_vo' ) ) {
+		// Resume review — _edl hasil persetujuan user menggantikan plan AI.
+		if ( ! empty( $p['_edl_resume'] ) && isset( $p['_review']['seg_plans'][0]['items'] ) ) {
+			$p['_edl'] = (array) $p['_review']['seg_plans'][0]['items'];
+		}
 		try {
-			$res = cc_assembly_run_vo( $cx, $ctx, $p, $step, $session_id );
+			$res = cc_assembly_run_vo( $cx, $ctx, $p, $step, $session_id, $job );
 			$cx->close();
 			return $res;
 		} catch ( CC_Control_Abort $e ) {
@@ -880,8 +888,9 @@ function cc_control_run( $job ) {
 	}
 
 	// Mode 'broll': pindai katalog B-Roll & SFX sekali sebelum loop segmen.
+	// Resume review menyuntik _broll_catalog — scan tidak perlu diulang.
 	$broll_catalog = array( 'brolls' => array(), 'sfxs' => array() );
-	if ( 'broll' === ( $p['workflow'] ?? 'clip' ) && ! empty( $p['broll_dir'] ) && function_exists( 'cc_assembly_catalog_dir' ) ) {
+	if ( 'broll' === ( $p['workflow'] ?? 'clip' ) && ! empty( $p['broll_dir'] ) && empty( $p['_broll_catalog'] ) && function_exists( 'cc_assembly_catalog_dir' ) ) {
 		try {
 			$broll_catalog = $step(
 				'Memindai koleksi B-Roll' . ( ! empty( $p['broll_vision'] ) ? ' (+ AI Vision)' : '' ) . ( ! empty( $p['sfx_dir'] ) ? ' & SFX' : '' ),
@@ -908,11 +917,17 @@ function cc_control_run( $job ) {
 			return $e->wp_error;
 		}
 		$p['_broll_catalog'] = $broll_catalog;
+	} elseif ( ! empty( $p['_broll_catalog']['brolls'] ) ) {
+		$broll_catalog = array(
+			'brolls' => (array) $p['_broll_catalog']['brolls'],
+			'sfxs'   => (array) ( $p['_broll_catalog']['sfxs'] ?? array() ),
+		);
 	}
 
 	// Mode momen: AI memilih segmen terbaik dari transkrip + metadata.
+	// Resume review membawa segmen tersimpan — pick tidak diulang.
 	$seg_titles = array();
-	if ( 'moments' === ( $p['mode'] ?? 'manual' ) ) {
+	if ( 'moments' === ( $p['mode'] ?? 'manual' ) && empty( $p['_segs_resolved'] ) ) {
 		try {
 			$seg_titles = $step(
 				'Memilih momen terbaik (AI)',
@@ -954,9 +969,13 @@ function cc_control_run( $job ) {
 	if ( ! $segs ) {
 		$segs[] = array( 'start' => (float) ( $p['start'] ?? 0 ), 'end' => (float) ( $p['end'] ?? 0 ) );
 	}
+	// Resume review — segmen yang sudah disetujui menggantikan hitung ulang.
+	if ( ! empty( $p['_segs_resolved'] ) ) {
+		$segs = array_values( (array) $p['_segs_resolved'] );
+	}
 	// Snap batas ke tepi kalimat transkrip (semua mode, bila srt tersedia).
 	$snap_src = ! empty( $p['srt'] ) ? (string) $p['srt'] : (string) ( $p['yt_srt'] ?? '' );
-	if ( '' !== $snap_src ) {
+	if ( '' !== $snap_src && empty( $p['_segs_resolved'] ) ) {
 		$segs = array_map(
 			function ( $s ) use ( $snap_src ) {
 				return array_merge( $s, cc_control_snap_segment( (float) $s['start'], (float) $s['end'], $snap_src ) );
@@ -964,6 +983,97 @@ function cc_control_run( $job ) {
 			$segs
 		);
 	}
+	/* Gerbang review EDL (workflow 'broll'): susun rencana sisipan semua
+	 * segmen SEKARANG — sebelum proyek mana pun dibuat — lalu tahan job
+	 * 'waiting' sampai user menyetujui kartu review. Resume datang lewat
+	 * payload._review.approved → $sp['_edl'] per segmen. */
+	if ( 'broll' === ( $p['workflow'] ?? 'clip' )
+		&& ! empty( $p['edl_review'] )
+		&& ! empty( $broll_catalog['brolls'] )
+		&& empty( $p['_edl_resume'] )
+		&& function_exists( 'cc_assembly_plan_edl' )
+		&& function_exists( 'cc_edl_review_pause' )
+	) {
+		$seg_plans  = array();
+		$any_items  = false;
+		$total_segs = count( $segs );
+		foreach ( $segs as $gi => $gseg ) {
+			$g_start = (float) $gseg['start'];
+			$g_end   = (float) $gseg['end'];
+			$gkeeps  = array();
+			if ( ! empty( $p['silence_cut'] ) ) {
+				$gkeeps = cc_control_silence_ranges(
+					(string) $p['file'],
+					$g_start,
+					$g_end,
+					array(
+						'db'  => (float) ( $p['silence_db'] ?? -35 ),
+						'min' => (float) ( $p['silence_min'] ?? 0.5 ),
+						'pad' => (float) ( $p['silence_pad'] ?? 0.1 ),
+					)
+				);
+				if ( is_wp_error( $gkeeps ) ) {
+					$gkeeps = array();
+				}
+			}
+			// Durasi timeline pasca-silence — identik dengan yang akan
+			// diukur cc_assembly_timeline_main_span setelah split.
+			$gdur = $g_end - $g_start;
+			if ( count( $gkeeps ) > 1 ) {
+				$gdur = 0.0;
+				foreach ( $gkeeps as $k ) {
+					$gdur += $k[1] - $k[0];
+				}
+			}
+			// SRT identik dengan resolusi 4b: manual > yt; remap saat
+			// silence aktif, selain itu slice window segmen.
+			$gsrt = '';
+			if ( ! empty( $p['srt'] ) && file_exists( $p['srt'] ) && CC_Tools::read_allowed( $p['srt'] ) ) {
+				$gsrt = (string) file_get_contents( $p['srt'] );
+			} elseif ( ! empty( $p['yt_srt'] ) && file_exists( $p['yt_srt'] ) && 'none' !== ( $p['cap_lang'] ?? '' ) ) {
+				$graw = (string) file_get_contents( $p['yt_srt'] );
+				$gsrt = count( $gkeeps ) > 1
+					? cc_control_srt_remap( $graw, $gkeeps )
+					: cc_control_srt_slice( $graw, $g_start, $g_end );
+			}
+			$gedl = $step(
+				( $total_segs > 1 ? '[' . ( $gi + 1 ) . '/' . $total_segs . '] ' : '' ) . 'AI Director menyusun B-Roll (' . count( $broll_catalog['brolls'] ) . ' bahan video)',
+				function () use ( $gsrt, $gdur, $broll_catalog, $p ) {
+					return cc_assembly_plan_edl(
+						$gsrt,
+						(float) $gdur,
+						$broll_catalog['brolls'],
+						$broll_catalog['sfxs'],
+						array(
+							'workflow' => 'broll',
+							'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
+							'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
+						)
+					);
+				}
+			);
+			$seg_plans[ $gi ] = array(
+				'label' => ! empty( $gseg['title'] )
+					? (string) $gseg['title']
+					: cc_fmt_time( $g_start ) . '–' . cc_fmt_time( $g_end ),
+				'dur'   => (float) $gdur,
+				'keeps' => $gkeeps,
+				'srt'   => $gsrt,
+				'items' => is_array( $gedl ) ? $gedl : array(),
+			);
+			if ( ! empty( $gedl ) ) {
+				$any_items = true;
+			}
+		}
+		if ( $any_items && $seg_plans ) {
+			$p['_segs'] = $segs;
+			cc_edl_review_pause( $job, $session_id, $p, $seg_plans, $broll_catalog );
+			$cx->close();
+			return array( '_waiting' => true );
+		}
+		// EDL kosong semua — tidak ada yang perlu direview, lanjut normal.
+	}
+
 	$total    = count( $segs );
 	$bodies   = array();
 	$errors   = array();
@@ -973,6 +1083,12 @@ function cc_control_run( $job ) {
 		$sp          = $p;
 		$sp['start'] = $seg['start'];
 		$sp['end']   = $seg['end'];
+		// Resume review — EDL & keeps hasil persetujuan user per segmen.
+		if ( ! empty( $p['_edl_resume'] ) && isset( $p['_review']['seg_plans'][ $i ] ) ) {
+			$rp           = (array) $p['_review']['seg_plans'][ $i ];
+			$sp['_edl']   = (array) ( $rp['items'] ?? array() );
+			$sp['_keeps'] = (array) ( $rp['keeps'] ?? array() );
+		}
 		$sp['name']  = cc_control_next_name( ! empty( $seg['title'] ) ? sanitize_title( $seg['title'] ) : ( $p['name'] ?? 'project' ), $reserved );
 		if ( ! empty( $p['output_name'] ) ) {
 			$oe = pathinfo( (string) $p['output_name'], PATHINFO_EXTENSION );
@@ -1255,19 +1371,25 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 		$warn  = '';
 		$keeps = array();
 		if ( ! empty( $p['silence_cut'] ) ) {
-			$keeps = cc_control_silence_ranges(
-				(string) $p['file'],
-				(float) $p['start'],
-				(float) $p['end'],
-				array(
-					'db'  => (float) ( $p['silence_db'] ?? -35 ),
-					'min' => (float) ( $p['silence_min'] ?? 0.5 ),
-					'pad' => (float) ( $p['silence_pad'] ?? 0.1 ),
-				)
-			);
-			if ( is_wp_error( $keeps ) ) {
-				$warn  = ' Deteksi hening gagal (' . $keeps->get_error_message() . ') — lanjut tanpa potong.';
-				$keeps = array();
+			if ( isset( $p['_keeps'] ) ) {
+				// Keeps dari gerbang review — identik dgn yang dipakai
+				// saat EDL direncanakan, jangan deteksi ulang.
+				$keeps = (array) $p['_keeps'];
+			} else {
+				$keeps = cc_control_silence_ranges(
+					(string) $p['file'],
+					(float) $p['start'],
+					(float) $p['end'],
+					array(
+						'db'  => (float) ( $p['silence_db'] ?? -35 ),
+						'min' => (float) ( $p['silence_min'] ?? 0.5 ),
+						'pad' => (float) ( $p['silence_pad'] ?? 0.1 ),
+					)
+				);
+				if ( is_wp_error( $keeps ) ) {
+					$warn  = ' Deteksi hening gagal (' . $keeps->get_error_message() . ') — lanjut tanpa potong.';
+					$keeps = array();
+				}
 			}
 		}
 		if ( count( $keeps ) > 1 ) {
@@ -1356,26 +1478,32 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				: cc_control_srt_slice( $raw, (float) $p['start'], (float) $p['end'] );
 		}
 
-		/* 4a3. Mode 'broll' — AI Director menyusun & memasang B-Roll + SFX di atas talking head */
+		/* 4a3. Mode 'broll' — AI Director menyusun & memasang B-Roll + SFX di atas talking head.
+		 * _edl dari resume review dipakai apa adanya (boleh [] — user sengaja
+		 * menghapus semua sisipan); tanpa _edl → rencanakan inline seperti biasa. */
 		if ( 'broll' === ( $p['workflow'] ?? 'clip' ) && ! empty( $p['_broll_catalog']['brolls'] ) && function_exists( 'cc_assembly_plan_edl' ) ) {
 			$cat = $p['_broll_catalog'];
-			$edl = $step(
-				'AI Director menyusun B-Roll (' . count( $cat['brolls'] ) . ' bahan video)',
-				function () use ( $cx, $project, $srt_txt, $cat, $p ) {
-					$span = cc_assembly_timeline_main_span( $cx, $project );
-					return cc_assembly_plan_edl(
-						$srt_txt,
-						(float) $span['duration'],
-						$cat['brolls'],
-						$cat['sfxs'],
-						array(
-							'workflow' => 'broll',
-							'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
-							'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
-						)
-					);
-				}
-			);
+			if ( array_key_exists( '_edl', $p ) ) {
+				$edl = (array) $p['_edl'];
+			} else {
+				$edl = $step(
+					'AI Director menyusun B-Roll (' . count( $cat['brolls'] ) . ' bahan video)',
+					function () use ( $cx, $project, $srt_txt, $cat, $p ) {
+						$span = cc_assembly_timeline_main_span( $cx, $project );
+						return cc_assembly_plan_edl(
+							$srt_txt,
+							(float) $span['duration'],
+							$cat['brolls'],
+							$cat['sfxs'],
+							array(
+								'workflow' => 'broll',
+								'pacing'   => (string) ( $p['broll_pacing'] ?? 'calm' ),
+								'prompt'   => (string) ( $p['broll_prompt'] ?? '' ),
+							)
+						);
+					}
+				);
+			}
 			if ( ! empty( $edl ) ) {
 				$step(
 					'Memasang ' . count( $edl ) . ' klip B-Roll & SFX ke timeline',
