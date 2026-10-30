@@ -590,7 +590,7 @@ get_header();
 		</div>
 	</div>
 
-	<div x-show="ctl.browseOpen" x-cloak class="cc-ovl" x-transition.opacity @click.self="ctl.browseOpen = false" @keydown.escape.window="ctl.browseOpen = false">
+	<div x-show="ctl.browseOpen" x-cloak class="cc-ovl" style="z-index: 80" x-transition.opacity @click.self="ctl.browseOpen = false" @keydown.escape.window="ctl.browseOpen = false">
 		<div class="cc-modal cc-modal-lg">
 			<div class="flex items-center justify-between mb-3">
 				<h3 class="cc-modal-title" x-text="ctl.browseMode === 'dir' ? 'Pilih folder' : 'Pilih file media'"></h3>

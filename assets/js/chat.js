@@ -368,11 +368,21 @@ function ccChat() {
 			if (base) { this.ctl.f.name = 'reel-' + base.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, ''); }
 		},
 
+		ctlFieldGet(field) {
+			const m = (field || '').match(/^scene_bg_(\d+)$/);
+			return m ? (this.ctl.f.scenes[+m[1]]?.bg || '') : (this.ctl.f[field] || '');
+		},
+		ctlFieldSet(field, val) {
+			const m = (field || '').match(/^scene_bg_(\d+)$/);
+			if (m && this.ctl.f.scenes[+m[1]]) { this.ctl.f.scenes[+m[1]].bg = val; }
+			else { this.ctl.f[field] = val; }
+		},
+
 		ctlBrowseOpen(field = 'file', mode = 'file') {
 			this.ctl.browseField = field;
 			this.ctl.browseMode = mode;
 			this.ctl.browseOpen = true;
-			const curVal = this.ctl.f[field] || '';
+			const curVal = this.ctlFieldGet(field);
 			let start = (CC_DATA.workspace || '').replace(/\/+$/, '') + '/Assets';
 			if (curVal && curVal.startsWith('/')) {
 				start = mode === 'dir' ? curVal : curVal.replace(/\/[^/]*$/, '');
@@ -390,16 +400,14 @@ function ccChat() {
 		},
 
 		ctlPick(path) {
-			const field = this.ctl.browseField || 'file';
-			this.ctl.f[field] = path;
+			this.ctlFieldSet(this.ctl.browseField || 'file', path);
 			this.ctl.browseOpen = false;
 			this.ctlSuggestName();
 		},
 
 		ctlPickDir() {
-			const field = this.ctl.browseField || 'broll_dir';
 			if (this.ctl.browse.path) {
-				this.ctl.f[field] = this.ctl.browse.path;
+				this.ctlFieldSet(this.ctl.browseField || 'broll_dir', this.ctl.browse.path);
 			}
 			this.ctl.browseOpen = false;
 		},
