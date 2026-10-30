@@ -444,7 +444,12 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 		$rows  = (array) ( $sc['rows'] ?? array() );
 		// Durasi tiap baris: bicara = max(audio probe, dur); sisanya dur (default 2s).
 		$spans     = cc_cartoon_row_spans( $rows );
-		$scene_dur = array_sum( $spans );
+		$scene_dur = 0.0;
+		foreach ( $rows as $i => $r ) {
+			if ( empty( $r['par'] ) ) {
+				$scene_dur += $spans[ $i ];
+			}
+		}
 
 		// Latar di T1 sepanjang scene — frameClip fill memenuhi kanvas.
 		$bg = (string) ( $sc['bg'] ?? '' );
@@ -480,11 +485,14 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			$xi++;
 		}
 
-		// Baris aksi.
-		$rt = $st0;
+		// Baris aksi — baris `par` berjalan bersamaan dengan baris sebelumnya.
+		$rt         = $st0;
+		$rt_prev    = $st0;
+		$char_lastx = $char_x;
 		foreach ( $rows as $i => $r ) {
 			$cn     = (string) ( $r['char'] ?? '' );
 			$act    = (string) ( $r['action'] ?? 'diam' );
+			$row_t  = ! empty( $r['par'] ) ? $rt_prev : $rt;
 			$dur    = (float) $spans[ $i ];
 			$trk    = (string) ( $char_tracks[ $cn ] ?? '' );
 			$rplan  = (array) ( ( $splan['rows'] ?? array() )[ $i ] ?? array() );
@@ -518,7 +526,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					if ( ! $imp ) {
 						continue;
 					}
-					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ), $fpat );
+					$add_clip( $trk, $imp, $row_t + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ), $fpat );
 				}
 				// Audio dialog.
 				if ( 'bicara' === $act && '' !== (string) ( $r['audio'] ?? '' ) && is_file( (string) $r['audio'] ) ) {
@@ -527,7 +535,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 						if ( '' === $dlg_tr ) {
 							$dlg_tr = $audio_track();
 						}
-						$add_clip( $dlg_tr, $imp, $rt );
+						$add_clip( $dlg_tr, $imp, $row_t );
 					}
 				}
 			} elseif ( 'jalan' === $act ) {
@@ -548,7 +556,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					if ( ! $imp ) {
 						continue;
 					}
-					$st_at = $rt + $k * $seg;
+					$st_at = $row_t + $k * $seg;
 					$ox    = $pos_x + ( $x1 - $pos_x ) * ( $k / max( 1, $n - 1 ) );
 					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox, $ai_frame ), $fpat );
 					// SFX step sinkron tiap pergantian pose.
@@ -566,7 +574,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 				$spk = cc_cartoon_pick_sprite( $spr, $look, $expr, 'diam' );
 				if ( $spk && ( $imp = $import_file( $spk['file'] ) ) ) {
 					$scale = 'zoom' === $act ? $height * 1.15 : $height;
-					$add_clip( $trk, $imp, $rt, $dur,
+					$add_clip( $trk, $imp, $row_t, $dur,
 						cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ),
 						array_merge( array( 'visualMotion' => array( 'entrance' => 'masuk' === $act ? 2 : 0, 'exit' => 'keluar' === $act ? 2 : 0, 'duration' => 0.35 ) ), $flip ? array( 'flipH' => true ) : array() ) );
 				}
@@ -579,7 +587,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 						if ( '' === $sfx_tr ) {
 							$sfx_tr = $audio_track();
 						}
-						$add_clip( $sfx_tr, $imp, $rt );
+						$add_clip( $sfx_tr, $imp, $row_t );
 						break;
 					}
 				}
@@ -593,7 +601,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 							$at    = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'addTrack', 'kind' => 'video', 'insertAt' => 1 ) ), 20 );
 							$br_tr = is_wp_error( $at ) ? '' : (string) ( $at['createdId'] ?? $at['created_id'] ?? '' );
 						}
-						$add_clip( $br_tr, $imp, $rt, min( $dur, (float) ( $imp['duration'] ?? 3 ) ), null,
+						$add_clip( $br_tr, $imp, $row_t, min( $dur, (float) ( $imp['duration'] ?? 3 ) ), null,
 							array( 'muted' => true, 'visualMotion' => array( 'entrance' => 1, 'exit' => 1, 'duration' => 0.3 ) ) );
 						break;
 					}
@@ -601,9 +609,41 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			}
 			// Caption dari teks baris bicara.
 			if ( 'bicara' === $act && '' !== trim( (string) ( $r['text'] ?? '' ) ) ) {
-				$cap_items[] = array( $rt, $rt + $dur, (string) $r['text'] );
+				$cap_items[] = array( $row_t, $row_t + $dur, (string) $r['text'] );
 			}
-			$rt += $dur;
+			// Karakter lain tetap hadir diam di posisi terakhirnya selama baris ini
+			// — KECUALI karakter yang beraksi di baris `par` menempel span ini
+			// (klip idlenya akan menutupi posisi aksi mereka).
+			$par_chars = array();
+			for ( $j = $i + 1; $j < count( $rows ); $j++ ) {
+				if ( empty( $rows[ $j ]['par'] ) ) {
+					break;
+				}
+				$par_chars[] = (string) ( $rows[ $j ]['char'] ?? '' );
+			}
+			foreach ( $scene_chars as $cn2 ) {
+				if ( '' === $cn2 || $cn2 === $cn || in_array( $cn2, $par_chars, true ) ) {
+					continue;
+				}
+				$spr2 = (array) ( $chars_cat['chars'][ $cn2 ]['sprites'] ?? array() );
+				$look2 = (string) ( ( $splan['looks'] ?? array() )[ $cn2 ] ?? 'default' );
+				$spd  = cc_cartoon_pick_sprite( $spr2, $look2, 'netral', 'diam' );
+				if ( ! $spd || ! ( $imp2 = $import_file( $spd['file'] ) ) ) {
+					continue;
+				}
+				$lx   = (float) ( $char_lastx[ $cn2 ] ?? $char_x[ $cn2 ] ?? 0.0 );
+				$h2   = (float) ( $spr2[0]['height'] ?? 0.7 ) ?: 0.7;
+				$add_clip( (string) ( $char_tracks[ $cn2 ] ?? '' ), $imp2, $row_t, $dur,
+					cc_cartoon_char_tf( $spd['file'], $h2, $feet_line, $lx, $ai_frame ),
+					$lx < 0 ? array( 'flipH' => true ) : null );
+			}
+			// Perbarui posisi akhir karakter aksi.
+			$char_lastx[ $cn ] = 'jalan' === $act ? (float) ( $r['x2'] ?? -$pos_x ) : $pos_x;
+			// Baris `par` tak memajukan timeline — berjalan bersama baris sebelumnya.
+			if ( empty( $r['par'] ) ) {
+				$rt_prev = $rt;
+				$rt     += $dur;
+			}
 		}
 		$t += $scene_dur;
 	}
