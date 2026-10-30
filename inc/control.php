@@ -1379,7 +1379,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			if ( ! empty( $edl ) ) {
 				$step(
 					'Memasang ' . count( $edl ) . ' klip B-Roll & SFX ke timeline',
-					function () use ( $cx, $project, $edl, $cat ) {
+					function () use ( $cx, $project, $edl, $cat, $p ) {
 						return cc_assembly_apply_edl( $cx, $project, $edl, $cat['brolls'], $cat['sfxs'], 'broll', (string) ( $p['broll_motion_in'] ?? $p['broll_motion'] ?? 'slide' ), (string) ( $p['broll_motion_out'] ?? 'fade' ) );
 					}
 				);

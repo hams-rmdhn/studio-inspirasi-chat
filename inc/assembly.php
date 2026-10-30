@@ -887,7 +887,7 @@ function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id ) {
 	// 5. Bersihkan clip video placeholder di track utama (bila dari template), pasang VO, lalu susun B-Roll & SFX.
 	$step(
 		'Merakit Voice Over, ' . count( $edl ) . ' klip B-Roll & SFX di timeline',
-		function () use ( $cx, $project, $vo_file, $vo_dur, $edl, $catalog ) {
+		function () use ( $cx, $project, $vo_file, $vo_dur, $edl, $catalog, $p ) {
 			$g = $cx->call( 'project.get', array( 'path' => $project ), 20 );
 			if ( is_wp_error( $g ) ) {
 				return $g;
