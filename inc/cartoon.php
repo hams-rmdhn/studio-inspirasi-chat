@@ -494,6 +494,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 		$rt_prev = $st0;
 		$cover   = array(); // cn => [[start,end],…] rentang aksi terpasang
 		$xtl     = array(); // cn => [[t_end,x],…] riwayat posisi karakter
+		$presence = array(); // cn => [[t,'in'|'out'],…] event masuk/keluar
 		foreach ( $rows as $i => $r ) {
 			$cn     = (string) ( $r['char'] ?? '' );
 			$act    = (string) ( $r['action'] ?? 'diam' );
@@ -619,9 +620,14 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			if ( 'bicara' === $act && '' !== trim( (string) ( $r['text'] ?? '' ) ) ) {
 				$cap_items[] = array( $row_t, $row_t + $dur, (string) $r['text'] );
 			}
-			// Rekam rentang terpakai & posisi akhir karakter untuk gap-fill nanti.
+			// Rekam rentang terpakai, posisi akhir, dan kehadiran karakter.
 			$cover[ $cn ][] = array( $row_t, $row_t + $dur );
 			$xtl[ $cn ][]   = array( $row_t + $dur, 'jalan' === $act ? (float) ( $r['x2'] ?? -$pos_x ) : $pos_x );
+			if ( 'masuk' === $act ) {
+				$presence[ $cn ][] = array( $row_t, 'in' );
+			} elseif ( 'keluar' === $act ) {
+				$presence[ $cn ][] = array( $row_t + $dur, 'out' );
+			}
 			// Baris `par` tak memajukan timeline — berjalan bersama baris sebelumnya.
 			if ( empty( $r['par'] ) ) {
 				$rt_prev = $rt;
@@ -657,7 +663,37 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			if ( $cur < $send - 0.05 ) {
 				$gaps[] = array( $cur, $send );
 			}
+			// Interval hadir: karakter tak ada sebelum 'masuk' pertama &
+			// sesudah 'keluar' — gap di luar kehadiran tak diisi idle.
+			$evs   = (array) ( $presence[ $cn2 ] ?? array() );
+			usort( $evs, function ( $a, $b ) { return $a[0] <=> $b[0]; } );
+			$state  = ! ( isset( $evs[0] ) && 'in' === $evs[0][1] );
+			$ps     = $st0;
+			$present = array();
+			foreach ( $evs as $ev ) {
+				$want_in = 'in' === $ev[1];
+				if ( $want_in && ! $state ) {
+					$state = true;
+					$ps    = $ev[0];
+				} elseif ( ! $want_in && $state ) {
+					$state     = false;
+					$present[] = array( $ps, $ev[0] );
+				}
+			}
+			if ( $state ) {
+				$present[] = array( $ps, $send );
+			}
+			$gaps2 = array();
 			foreach ( $gaps as $g ) {
+				foreach ( $present as $pi ) {
+					$gs = max( $g[0], $pi[0] );
+					$ge = min( $g[1], $pi[1] );
+					if ( $ge > $gs + 0.05 ) {
+						$gaps2[] = array( $gs, $ge );
+					}
+				}
+			}
+			foreach ( $gaps2 as $g ) {
 				$gx = (float) ( $char_x[ $cn2 ] ?? 0.0 );
 				foreach ( $hist as $hx ) {
 					if ( $hx[0] <= $g[0] + 0.05 ) {
@@ -930,11 +966,16 @@ function cc_cartoon_story_scenes( $jscenes, $cat ) {
 			'broll_start' => (float) ( $jr['broll_start'] ?? 0 ),
 		);
 	};
-	// Posisi x per karakter — bergantian kiri/kanan, konsisten lintas scene.
+	// Posisi x per karakter — sisi awal bergantian, lalu posisi terakhir
+	// karakter DIPROPAGASIKAN sehingga baris berikutnya tak teleport.
 	$cxmap = array();
-	$cx_of = function ( $cn ) use ( &$cxmap ) {
+	$lastx = array();
+	$cx_of = function ( $cn ) use ( &$cxmap, &$lastx ) {
 		if ( '' === $cn ) {
 			return 0.0;
+		}
+		if ( isset( $lastx[ $cn ] ) ) {
+			return $lastx[ $cn ];
 		}
 		if ( ! isset( $cxmap[ $cn ] ) ) {
 			$cxmap[ $cn ] = count( $cxmap ) % 2 ? 0.25 : -0.25;
@@ -1001,6 +1042,7 @@ function cc_cartoon_story_scenes( $jscenes, $cat ) {
 				'x2'     => $x2v,
 				'par'    => ! empty( $jr['par'] ),
 			);
+			$lastx[ $cn2 ] = 'jalan' === $act ? $x2v : $xv;
 			$prows[] = $prow( $jr );
 		}
 		if ( ! $rows ) {
