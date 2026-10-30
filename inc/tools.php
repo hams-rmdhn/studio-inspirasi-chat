@@ -109,6 +109,8 @@ class CC_Tools {
 						'edl_review'      => array( 'type' => 'boolean', 'description' => 'Jeda setelah AI menyusun rencana B-Roll agar user bisa mereview/mengedit dulu (default false — langsung rakit)' ),
 						'hook_ai'         => array( 'type' => 'boolean', 'description' => 'Tulis ulang teks hook template dengan AI dari transkrip (hanya bila pakai template)' ),
 						'chars_dir'       => array( 'type' => 'string', 'description' => 'Folder karakter sprite (cartoon) — berisi subfolder per karakter dengan PNG + <nama>.csv' ),
+						'bg_dir'          => array( 'type' => 'string', 'description' => 'Folder gambar latar scene (cartoon) — semua gambar otomatis dikatalogkan' ),
+						'vo_dir'          => array( 'type' => 'string', 'description' => 'Folder audio dialog (cartoon) — file NNN-<char>.mp3: nomor=urutan dialog, nama=karakter' ),
 						'scenes'          => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{bg,chars[],look,prompt,rows[{char,action,dur,audio,text,dir,x,x2}]} — storyboard kartun' ) ),
 						'bgm_file'        => array( 'type' => 'string', 'description' => 'File audio musik latar (cartoon)' ),
 						'bgm_vol'         => array( 'type' => 'number', 'description' => 'Volume BGM 0-1 (default 0.2)' ),
@@ -175,6 +177,19 @@ class CC_Tools {
 	public static function run( $name, $args, &$ctx ) {
 		$args = is_array( $args ) ? $args : array();
 		try {
+			// Proyek terikat sesi — tool edit tanpa argumen project diisi
+			// otomatis dengan proyek terikat; sistem membukanya sekali per
+			// turn (cache $ctx['_bound']) lalu save+close saat turn selesai.
+			if ( in_array( $name, array( 'timeline_read', 'edit_apply', 'replace_clip_media', 'import_media', 'export_run', 'set_video', 'template_save' ), true ) ) {
+				$bound = self::bound_path( $ctx, $args );
+				if ( '' !== $bound ) {
+					$args['project'] = $bound;
+					$ok              = self::bound_ensure( $ctx, $bound );
+					if ( is_wp_error( $ok ) ) {
+						return self::err( $ok );
+					}
+				}
+			}
 			switch ( $name ) {
 				case 'concat_status':
 					return self::out( self::cx( $ctx )->call( 'version' ) );
@@ -183,13 +198,23 @@ class CC_Tools {
 					return self::out( self::cx( $ctx )->call( 'project.list' ) );
 
 				case 'project_open':
-					return self::out( self::cx( $ctx )->call( 'project.open', array( 'path' => $args['project'] ?? '' ) ) );
+					$po = self::cx( $ctx )->call( 'project.open', array( 'path' => $args['project'] ?? '' ) );
+					// AI membuka proyek terikat secara eksplisit — catat agar
+					// release akhir turn ikut menyimpan + menutupnya.
+					if ( ! is_wp_error( $po ) && '' !== self::bound_path( $ctx, $args ) ) {
+						$ctx['_bound'][ self::norm( (string) $args['project'] ) ] = true;
+					}
+					return self::out( $po );
 
 				case 'project_save':
 					return self::out( self::cx( $ctx )->call( 'project.save', array( 'path' => $args['project'] ?? '' ) ) );
 
 				case 'project_close':
-					return self::out( self::cx( $ctx )->call( 'project.close', array( 'path' => $args['project'] ?? '' ) ) );
+					$pc = self::cx( $ctx )->call( 'project.close', array( 'path' => $args['project'] ?? '' ) );
+					if ( ! is_wp_error( $pc ) ) {
+						unset( $ctx['_bound'][ self::norm( (string) ( $args['project'] ?? '' ) ) ] );
+					}
+					return self::out( $pc );
 
 				case 'set_video':
 					return self::out(
@@ -273,13 +298,80 @@ class CC_Tools {
 		return $ctx['cx'];
 	}
 
+	/* -------------------------------------------------------------
+	 * Proyek terikat sesi (chat-project-binding)
+	 * ----------------------------------------------------------- */
+
+	/**
+	 * Path proyek terikat yang berlaku untuk tool call ini.
+	 * '' = tidak ada binding, atau AI eksplisit menargetkan proyek lain
+	 * (dalam hal ini lifecycle tetap manual seperti biasa).
+	 */
+	private static function bound_path( &$ctx, $args ) {
+		if ( ! function_exists( 'cc_session_project_get' ) || empty( $ctx['session_id'] ) ) {
+			return '';
+		}
+		$bound = self::norm( (string) cc_session_project_get( $ctx['session_id'] ) );
+		if ( '' === $bound ) {
+			return '';
+		}
+		$req = self::norm( (string) ( $args['project'] ?? '' ) );
+		return ( '' === $req || $req === $bound ) ? $bound : '';
+	}
+
+	/** Buka proyek terikat sekali per turn — status di-cache di $ctx['_bound']. */
+	private static function bound_ensure( &$ctx, $project ) {
+		if ( ! empty( $ctx['_bound'][ $project ] ) ) {
+			return true;
+		}
+		if ( ! is_dir( $project ) ) {
+			return new WP_Error( 'cc_bound_missing', 'Proyek terikat tidak ditemukan di disk: ' . $project . ' — mungkin dipindahkan atau dihapus.' );
+		}
+		$open = self::cx( $ctx )->call( 'project.open', array( 'path' => $project ), 30 );
+		if ( is_wp_error( $open ) ) {
+			// Kegagalan koneksi/auth diteruskan apa adanya — bukan lock.
+			if ( in_array( $open->get_error_code(), array( 'cc_unreachable', 'cc_auth', 'cc_timeout', 'cc_write', 'cc_closed' ), true ) ) {
+				return $open;
+			}
+			// Mungkin "sudah terbuka" — verifikasi lewat project.get sebelum
+			// menyimpulkan lock. Gagal open = warning ramah, bukan fatal.
+			if ( preg_match( '/already|sudah|terbuka/i', $open->get_error_message() ) ) {
+				$ctx['_bound'][ $project ] = true;
+				return true;
+			}
+			$probe = self::cx( $ctx )->call( 'project.get', array( 'path' => $project ), 15 );
+			if ( ! is_wp_error( $probe ) ) {
+				$ctx['_bound'][ $project ] = true;
+				return true;
+			}
+			return new WP_Error(
+				'cc_bound_lock',
+				'Proyek "' . basename( $project ) . '" sedang dibuka di Studio Inspirasi — tutup dulu di aplikasi, lalu ulangi perintah. (' . $open->get_error_message() . ')'
+			);
+		}
+		$ctx['_bound'][ $project ] = true;
+		return true;
+	}
+
+	/**
+	 * Simpan + tutup semua proyek terikat yang dibuka turn ini.
+	 * Dipanggil worker (cc_agent_turn finally) sebelum socket ditutup.
+	 */
+	public static function bound_release( &$ctx ) {
+		foreach ( array_keys( (array) ( $ctx['_bound'] ?? array() ) ) as $path ) {
+			self::cx( $ctx )->call( 'project.save', array( 'path' => $path ), 30 );
+			self::cx( $ctx )->call( 'project.close', array( 'path' => $path ), 15 );
+		}
+		$ctx['_bound'] = array();
+	}
+
 	/** Jalankan pipeline control penuh dari pesan chat — antre job control_run. */
 	private static function control_run( $ctx, $args ) {
 		if ( ! function_exists( 'cc_control_enqueue' ) ) {
 			return new WP_Error( 'cc_ctl', 'Pipeline control tidak tersedia.' );
 		}
 		$wf = sanitize_key( (string) ( $args['workflow'] ?? 'clip' ) );
-		if ( ! in_array( $wf, array( 'clip', 'broll', 'assembly' ), true ) ) {
+		if ( ! in_array( $wf, array( 'clip', 'broll', 'assembly', 'cartoon' ), true ) ) {
 			$wf = 'clip';
 		}
 		$p = array(
@@ -297,6 +389,8 @@ class CC_Tools {
 			'edl_review'      => ! empty( $args['edl_review'] ) && 'false' !== $args['edl_review'],
 			'hook_ai'         => ! empty( $args['hook_ai'] ),
 			'chars_dir'       => wp_normalize_path( (string) ( $args['chars_dir'] ?? '' ) ),
+			'bg_dir'          => wp_normalize_path( (string) ( $args['bg_dir'] ?? '' ) ),
+			'vo_dir'          => wp_normalize_path( (string) ( $args['vo_dir'] ?? '' ) ),
 			'bgm_file'        => wp_normalize_path( (string) ( $args['bgm_file'] ?? '' ) ),
 			'bgm_vol'         => (float) ( $args['bgm_vol'] ?? 0.2 ),
 			'prompt'          => sanitize_textarea_field( (string) ( $args['prompt'] ?? '' ) ),

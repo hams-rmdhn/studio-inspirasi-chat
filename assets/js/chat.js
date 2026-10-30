@@ -51,7 +51,7 @@ function ccEdlCard(el) {
 	let d = {};
 	try { d = JSON.parse(el.querySelector('.cc-edl-data').textContent || '{}'); } catch (e) {}
 	const segs = (d.segs || []).map(function (s) {
-		return { label: s.label || '', dur: +s.dur || 0, items: (s.items || []).map(function (it) { return Object.assign({}, it); }) };
+		return { label: s.label || '', kind: s.kind || '', dur: +s.dur || 0, items: (s.items || []).map(function (it) { return Object.assign({}, it); }) };
 	});
 	return {
 		segs: segs,
@@ -130,7 +130,7 @@ function ccEdlCard(el) {
 
 function ccChat() {
 	return {
-		sessions: [], activeId: 0, activeTitle: '',
+		sessions: [], activeId: 0, activeTitle: '', activeProject: '',
 		messages: [], loading: false,
 		body: '', sending: false, error: '',
 		hasActive: false, activeJobId: 0, jobDetail: '',
@@ -180,6 +180,8 @@ function ccChat() {
 			try {
 				const d = await ccApi('GET', '/sessions');
 				this.sessions = d.items || [];
+				const cur = this.sessions.find((x) => x.id === this.activeId);
+				if (cur && cur.project !== undefined) { this.activeProject = cur.project || ''; }
 				if (!this.activeId && this.sessions.length) {
 					this.openSession(this.sessions[0].id);
 				}
@@ -206,6 +208,7 @@ function ccChat() {
 			try {
 				const d = await ccApi('GET', '/sessions/' + id + '/messages');
 				this.activeTitle = d.title || 'Percakapan baru';
+				this.activeProject = d.project || '';
 				this.messages = this.orderMsgs((d.items || []).map((m) => this.adopt(m)));
 				this.oldestId = d.oldest_id || 0;
 				this.hasMore = !!d.has_more;
@@ -260,6 +263,7 @@ function ccChat() {
 				if (this.activeId === this.modal.id) {
 					this.activeId = 0;
 					this.activeTitle = '';
+					this.activeProject = '';
 					this.messages = [];
 					if (this.sessions.length) { this.openSession(this.sessions[0].id); }
 				}
@@ -301,6 +305,7 @@ function ccChat() {
 				if (this.activeId === id) {
 					this.activeId = 0;
 					this.activeTitle = '';
+					this.activeProject = '';
 					this.messages = [];
 					if (this.sessions.length) { this.openSession(this.sessions[0].id); }
 				}
@@ -321,19 +326,17 @@ function ccChat() {
 				silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1,
 				segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff',
 				output_name: '', dest_dir: '', srt: '', cap_lang: 'id',
-				chars_dir: '', bgm_file: '', bgm_vol: 0.2, prompt: '', transition: 'fade',
-				scenes: [{ bg: '', chars: [], look: {}, prompt: '', rows: [{ char: '', action: 'bicara', dur: 2, audio: '', text: '', dir: 'kanan', x: 0, x2: 0 }] }],
-				scene_chars: [], new_char: '',
+				chars_dir: '', bg_dir: '', vo_dir: '', bgm_file: '', bgm_vol: 0.2, prompt: '', transition: 'fade',
 			},
 			submitting: false, running: false, error: '', sessionId: 0,
-			sb: false,
+			scan: {},
 		},
 
 		ctlStepLabels() {
 			const wf = this.ctl.f.workflow;
 			if (wf === 'assembly') { return ['Sumber & VO', 'B-Roll & SFX', 'Arahan AI', 'Proyek']; }
 			if (wf === 'broll') { return ['Sumber', 'B-Roll & Sub', 'Segmen & AI', 'Proyek']; }
-			if (wf === 'cartoon') { return ['Karakter', 'Audio & AI', 'Storyboard', 'Proyek']; }
+			if (wf === 'cartoon') { return ['Karakter', 'Aset & Arahan', 'Proyek']; }
 			return ['Sumber', 'Subtitle', 'Segmen', 'Proyek'];
 		},
 
@@ -369,13 +372,21 @@ function ccChat() {
 		},
 
 		ctlFieldGet(field) {
-			const m = (field || '').match(/^scene_bg_(\d+)$/);
-			return m ? (this.ctl.f.scenes[+m[1]]?.bg || '') : (this.ctl.f[field] || '');
+			return (this.ctl.f[field] || '');
 		},
 		ctlFieldSet(field, val) {
-			const m = (field || '').match(/^scene_bg_(\d+)$/);
-			if (m && this.ctl.f.scenes[+m[1]]) { this.ctl.f.scenes[+m[1]].bg = val; }
-			else { this.ctl.f[field] = val; }
+			this.ctl.f[field] = val;
+			if (['chars_dir', 'bg_dir', 'vo_dir', 'sfx_dir', 'broll_dir'].includes(field)) { this.ctlScanFolder(field); }
+		},
+
+		// Scrape otomatis: tampilkan hitung isi folder begitu dipilih.
+		async ctlScanFolder(field) {
+			const dir = (this.ctl.f[field] || '').trim();
+			if (!dir) { delete this.ctl.scan[field]; return; }
+			try {
+				const d = await ccApi('GET', '/control/folder?path=' + encodeURIComponent(dir));
+				this.ctl.scan[field] = (d.files || []).length + ' file · ' + (d.dirs || []).length + ' subfolder terdeteksi';
+			} catch (e) { this.ctl.scan[field] = 'Tidak bisa membaca folder ini.'; }
 		},
 
 		ctlBrowseOpen(field = 'file', mode = 'file') {
@@ -441,7 +452,7 @@ function ccChat() {
 				if (!f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
 			} else if (f.workflow === 'cartoon') {
 				if (!f.chars_dir.trim()) { this.ctl.error = 'Folder karakter wajib dipilih.'; return; }
-				if (!f.scenes.length || !f.scenes.some(s => s.rows.length)) { this.ctl.error = 'Storyboard butuh minimal satu baris aksi.'; return; }
+				if (!f.prompt.trim()) { this.ctl.error = 'Naskah & instruksi AI wajib diisi — AI menyusun storyboard dari sini.'; return; }
 			} else {
 				if (!f.file.trim()) { this.ctl.error = 'File video wajib diisi.'; return; }
 				if (f.workflow === 'broll' && !f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
@@ -462,9 +473,9 @@ function ccChat() {
 			try {
 				const d = await ccPost('/control/run', {
 					workflow: f.workflow,
-					chars_dir: f.chars_dir, bgm_file: f.bgm_file, bgm_vol: f.bgm_vol,
+					chars_dir: f.chars_dir, bg_dir: f.bg_dir, vo_dir: f.vo_dir,
+					bgm_file: f.bgm_file, bgm_vol: f.bgm_vol,
 					prompt: f.prompt, transition: f.transition,
-					scenes: JSON.stringify(f.scenes),
 					template: f.src === 'template' ? f.template : '',
 					template_label: f.src === 'template' ? f.template_label : '',
 					aspect: f.aspect, srt: f.srt, cap_lang: f.cap_lang,
@@ -617,6 +628,7 @@ function ccChat() {
 				.map((m) => m.id).join(',');
 			try {
 				const d = await ccApi('GET', '/sessions/' + this.activeId + '/messages?after=' + maxId + '&watch=' + watch);
+				if (d.project !== undefined) { this.activeProject = d.project || ''; }
 				this.hasActive = !!d.has_active;
 				this.activeJobId = d.active_job_id || 0;
 				this.jobDetail = d.job_detail || '';

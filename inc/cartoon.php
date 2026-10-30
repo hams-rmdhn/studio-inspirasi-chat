@@ -437,6 +437,10 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			break;
 		}
 	}
+	// Track step per karakter — baris `par` membuat dua karakter jalan
+	// bersamaan; satu track bersama membuat klip saling bertumpuk dan
+	// digeser engine ke belakang blok (langkah terdengar saat sudah diam).
+	$step_tracks = array();
 
 	foreach ( $scenes as $si => $sc ) {
 		$splan = (array) ( $plans[ $si ] ?? array() );
@@ -560,14 +564,17 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					$st_at = $row_t + $k * $seg;
 					$ox    = $pos_x + ( $x1 - $pos_x ) * ( $k / max( 1, $n - 1 ) );
 					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox, $ai_frame ), $fpat );
-					// SFX step sinkron tiap pergantian pose.
+					// SFX step sinkron tiap pergantian pose — track per karakter.
 					if ( $step_sfx ) {
-						if ( '' === $sfx_tr ) {
-							$sfx_tr = $audio_track();
+						if ( ! isset( $step_tracks[ $cn ] ) ) {
+							$step_tracks[ $cn ] = $audio_track();
 						}
-						$simp = $import_file( $step_sfx['file'] );
-						if ( $simp ) {
-							$add_clip( $sfx_tr, $simp, $st_at, min( (float) ( $simp['duration'] ?? $seg ), $seg ) );
+						$st_trk = (string) $step_tracks[ $cn ];
+						if ( '' !== $st_trk ) {
+							$simp = $import_file( $step_sfx['file'] );
+							if ( $simp ) {
+								$add_clip( $st_trk, $simp, $st_at, min( (float) ( $simp['duration'] ?? $seg ), $seg ) );
+							}
 						}
 					}
 				}
@@ -713,31 +720,383 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 	return array( 'warns' => $warns, 'duration' => $t );
 }
 
+/* ==================== STORYBOARD OTOMATIS (v2) ==================== */
+
+/** Scan folder latar (gambar) — map 'bg1'.. terurut nama. */
+function cc_cartoon_catalog_bg( $dir ) {
+	$dir = wp_normalize_path( trim( (string) $dir ) );
+	$out = array();
+	if ( '' === $dir || ! is_dir( $dir ) ) {
+		return $out;
+	}
+	$exts = array( 'png', 'jpg', 'jpeg', 'webp' );
+	$i    = 0;
+	foreach ( (array) scandir( $dir ) as $f ) {
+		$full = $dir . '/' . $f;
+		if ( '.' === $f[0] || ! is_file( $full )
+			|| ! in_array( strtolower( pathinfo( $f, PATHINFO_EXTENSION ) ), $exts, true ) ) {
+			continue;
+		}
+		$i++;
+		$out[ 'bg' . $i ] = array( 'id' => 'bg' . $i, 'file' => wp_normalize_path( $full ), 'name' => $f );
+	}
+	return $out;
+}
+
+/**
+ * Katalog VO: semua file audio di folder — urut seq dari prefix NNN,
+ * karakter dari sisa nama (`001-budi.mp3` → seq 1, char budi).
+ * Map 'vo1'.. sesuai urutan dialog.
+ */
+function cc_cartoon_catalog_vo( $dir ) {
+	$dir = wp_normalize_path( trim( (string) $dir ) );
+	$items = array();
+	if ( '' === $dir || ! is_dir( $dir ) ) {
+		return $items;
+	}
+	$exts = array( 'mp3', 'wav', 'm4a', 'aac', 'ogg', 'flac' );
+	$rows = array();
+	foreach ( (array) scandir( $dir ) as $f ) {
+		$full = $dir . '/' . $f;
+		if ( '.' === $f[0] || ! is_file( $full )
+			|| ! in_array( strtolower( pathinfo( $f, PATHINFO_EXTENSION ) ), $exts, true ) ) {
+			continue;
+		}
+		$stem = pathinfo( $f, PATHINFO_FILENAME );
+		$seq  = PHP_INT_MAX;
+		$char = sanitize_key( $stem );
+		if ( preg_match( '/^(\d+)[\-_\s\.]*(.*)$/', $stem, $m ) ) {
+			$seq  = (int) $m[1];
+			$char = sanitize_key( $m[2] );
+		}
+		$pr     = cc_assembly_probe_local( $full );
+		$rows[] = array(
+			'file'     => wp_normalize_path( $full ),
+			'seq'      => $seq,
+			'char'     => $char,
+			'name'     => $f,
+			'duration' => (float) ( $pr['duration'] ?? 0 ),
+			'text'     => '',
+		);
+	}
+	usort( $rows, function ( $a, $b ) { return $a['seq'] <=> $b['seq']; } );
+	foreach ( $rows as $i => $r ) {
+		$r['id']          = 'vo' . ( $i + 1 );
+		$items[ $r['id'] ] = $r;
+	}
+	return $items;
+}
+
+/** Parse baris naskah `Nama: "teks"` dari prompt → [{char,text}]. */
+function cc_cartoon_script_lines( $prompt ) {
+	$out = array();
+	foreach ( preg_split( '/\r?\n/', (string) $prompt ) as $line ) {
+		if ( preg_match( '/^\s*([A-Za-z0-9_\-]+)\s*[:：]\s*["\'“‘](.+?)["\'”’]\s*$/u', $line, $m ) ) {
+			$out[] = array( 'char' => sanitize_key( $m[1] ), 'text' => trim( $m[2] ) );
+		}
+	}
+	return $out;
+}
+
+/**
+ * Isi text tiap file VO dari baris naskah — per karakter, file ke-i
+ * (urut seq) ↔ baris naskah ke-i untuk karakter itu. Sisanya → needs_stt.
+ */
+function cc_cartoon_map_dialog( &$vo_cat, $script ) {
+	$warns = array();
+	$pool  = array();
+	foreach ( (array) $script as $l ) {
+		$pool[ $l['char'] ][] = $l['text'];
+	}
+	foreach ( $vo_cat as &$v ) {
+		$cn = (string) $v['char'];
+		if ( '' !== $cn && ! empty( $pool[ $cn ] ) ) {
+			$v['text'] = array_shift( $pool[ $cn ] );
+		} else {
+			$v['needs_stt'] = true;
+		}
+	}
+	unset( $v );
+	foreach ( $pool as $cn => $left ) {
+		if ( $left ) {
+			$warns[] = 'Naskah ' . $cn . ': ' . count( $left ) . ' baris tanpa file VO.';
+		}
+	}
+	return $warns;
+}
+
+/** Whisper untuk VO tanpa teks naskah — cache fingerprint via ensure_srt. */
+function cc_cartoon_story_transcribe( &$vo_cat ) {
+	$warns = array();
+	if ( ! function_exists( 'cc_assembly_ensure_srt' ) ) {
+		return $warns;
+	}
+	foreach ( $vo_cat as &$v ) {
+		if ( empty( $v['needs_stt'] ) ) {
+			continue;
+		}
+		$srt = cc_assembly_ensure_srt( $v['file'] );
+		if ( is_wp_error( $srt ) ) {
+			$warns[] = 'STT gagal ' . $v['name'] . ': ' . $srt->get_error_message();
+			continue;
+		}
+		if ( preg_match_all( '/^\d+\s*\n[\d:,\.\s>\-]+\n(.+)$/m', (string) $srt, $mm ) ) {
+			$v['text'] = trim( implode( ' ', array_map( 'trim', $mm[1] ) ) );
+		}
+	}
+	unset( $v );
+	return $warns;
+}
+
+/**
+ * AI Director — satu panggil menyusun storyboard utuh:
+ * jumlah scene, bg, karakter, look, urutan baris (vo/aksi), sfx & broll.
+ * Return array scenes mentah AI, atau WP_Error untuk kegagalan transport.
+ */
+function cc_cartoon_plan_story( $prompt, $cat ) {
+	$chars_brief = array();
+	foreach ( (array) ( $cat['chars']['chars'] ?? array() ) as $cn => $ch ) {
+		$lk = array();
+		$ex = array();
+		foreach ( (array) $ch['sprites'] as $sp ) {
+			$lk[ $sp['look'] ]    = true;
+			$ex[ $sp['ekspresi'] ] = true;
+		}
+		$chars_brief[ $cn ] = 'looks:' . implode( ',', array_keys( $lk ) ) . ' expr:' . implode( ',', array_keys( $ex ) );
+	}
+	$bg = array();
+	foreach ( (array) ( $cat['bg'] ?? array() ) as $b ) {
+		$bg[] = $b['id'] . '=' . $b['name'];
+	}
+	$vo = array();
+	foreach ( (array) ( $cat['vo'] ?? array() ) as $v ) {
+		$vo[] = $v['id'] . '=' . $v['char'] . ' ' . round( (float) $v['duration'], 1 ) . 's "' . mb_substr( (string) $v['text'], 0, 60 ) . '"';
+	}
+	$sfx = array();
+	foreach ( (array) ( $cat['sfx'] ?? array() ) as $s ) {
+		$sfx[] = $s['id'] . '=' . $s['name'] . ( ! empty( $s['desc'] ) ? '(' . $s['desc'] . ')' : '' );
+	}
+	$br = array();
+	foreach ( array_slice( (array) ( $cat['brolls'] ?? array() ), 0, 40 ) as $b ) {
+		$br[] = (string) ( $b['id'] ?? '' ) . '=' . (string) ( $b['name'] ?? '' );
+	}
+
+	$sys = 'Anda sutradara animasi kartun eksplainer. Susun storyboard utuh (1-6 scene) dari prompt user + katalog aset. '
+		. 'Jawab HANYA JSON: {"scenes":[{"bg_id":"bg1","chars":["nama"],"looks":{"nama":"look"},"transition_out":"fade",'
+		. '"rows":[{"kind":"vo","vo_id":"vo1","expr":"netral","sfx_id":"","broll_id":"","broll_start":0} ATAU '
+		. '{"char":"nama","action":"jalan|zoom|masuk|keluar|diam","dir":"kanan|kiri","dur":2,"expr":"netral","sfx_id":"","broll_id":"","broll_start":0}]}]}. '
+		. 'Aturan: tiap vo_id WAJIB muncul tepat sekali sebagai baris kind:vo (urutan dialog sesuai naskah); '
+		. 'bg_id/chars/looks/expr/sfx_id/broll_id HANYA dari katalog; aksi non-dialog hanya jalan|zoom|masuk|keluar|diam; field kosong boleh dihilangkan.';
+	$usr = "PROMPT:\n{$prompt}\n\nKARAKTER: " . wp_json_encode( $chars_brief )
+		. "\nBG: " . implode( '; ', $bg )
+		. "\nVO (urutan dialog): " . implode( '; ', $vo )
+		. "\nSFX: " . implode( '; ', $sfx )
+		. "\nBROLL: " . implode( '; ', $br );
+
+	if ( ! function_exists( 'cc_ai_configured' ) || ! cc_ai_configured() ) {
+		return new WP_Error( 'cc_story_ai', 'Provider AI belum dikonfigurasi — atur di Settings › Agen AI.' );
+	}
+	$res = CC_AI::chat( array( array( 'role' => 'system', 'content' => $sys ), array( 'role' => 'user', 'content' => $usr ) ) );
+	if ( is_wp_error( $res ) ) {
+		return $res;
+	}
+	$raw = (string) ( $res['message']['content'] ?? '' );
+	$j   = json_decode( trim( $raw ), true );
+	if ( ! is_array( $j ) && preg_match( '/\{.*"scenes".*\}/s', $raw, $m ) ) {
+		$j = json_decode( $m[0], true ); // model membungkus dengan ```json
+	}
+	return ( is_array( $j ) && ! empty( $j['scenes'] ) ) ? (array) $j['scenes'] : array();
+}
+
+/**
+ * Materialize JSON plan_story → scenes[] + plans[] bentuk
+ * cc_cartoon_generate / cc_cartoon_review_items. VO yang tidak dipakai AI
+ * ditempel ke scene terakhir agar dialog tidak hilang.
+ */
+function cc_cartoon_story_scenes( $jscenes, $cat ) {
+	$scenes  = array();
+	$plans   = array();
+	$warns   = array();
+	$used_vo = array();
+	$bg_ids  = array_values( (array) ( $cat['bg'] ?? array() ) );
+
+	$prow = function ( $jr ) {
+		return array(
+			'expr'        => sanitize_key( (string) ( $jr['expr'] ?? 'netral' ) ) ?: 'netral',
+			'sfx_id'      => sanitize_key( (string) ( $jr['sfx_id'] ?? '' ) ),
+			'broll_id'    => sanitize_key( (string) ( $jr['broll_id'] ?? '' ) ),
+			'broll_start' => (float) ( $jr['broll_start'] ?? 0 ),
+		);
+	};
+	$vo_row = function ( $v ) {
+		return array(
+			'char' => (string) $v['char'], 'action' => 'bicara',
+			'dur'  => max( 0.5, (float) $v['duration'] ), 'audio' => (string) $v['file'],
+			'text' => (string) $v['text'], 'dir' => 'kanan', 'x' => 0, 'x2' => 0,
+		);
+	};
+
+	foreach ( (array) $jscenes as $js ) {
+		if ( ! is_array( $js ) ) {
+			continue;
+		}
+		$bg_id = (string) ( $js['bg_id'] ?? '' );
+		$bg    = isset( $cat['bg'][ $bg_id ] ) ? $cat['bg'][ $bg_id ]['file'] : ( $bg_ids ? $bg_ids[0]['file'] : '' );
+		$chars = array();
+		foreach ( (array) ( $js['chars'] ?? array() ) as $cn ) {
+			$cn = sanitize_key( (string) $cn );
+			if ( isset( $cat['chars']['chars'][ $cn ] ) ) {
+				$chars[] = $cn;
+			}
+		}
+		$rows  = array();
+		$prows = array();
+		foreach ( (array) ( $js['rows'] ?? array() ) as $jr ) {
+			if ( ! is_array( $jr ) ) {
+				continue;
+			}
+			if ( 'vo' === ( $jr['kind'] ?? '' ) || ! empty( $jr['vo_id'] ) ) {
+				$vid = (string) ( $jr['vo_id'] ?? '' );
+				if ( ! isset( $cat['vo'][ $vid ] ) ) {
+					$warns[] = 'vo_id tak dikenal: ' . $vid;
+					continue;
+				}
+				if ( ! empty( $used_vo[ $vid ] ) ) {
+					$warns[] = 'vo_id dipakai dua kali: ' . $vid;
+					continue;
+				}
+				$used_vo[ $vid ] = true;
+				$rows[]  = $vo_row( $cat['vo'][ $vid ] );
+				$prows[] = $prow( $jr );
+				continue;
+			}
+			$act = sanitize_key( (string) ( $jr['action'] ?? 'diam' ) );
+			if ( ! in_array( $act, array( 'diam', 'jalan', 'zoom', 'masuk', 'keluar' ), true ) ) {
+				$act = 'diam';
+			}
+			$rows[] = array(
+				'char'   => sanitize_key( (string) ( $jr['char'] ?? '' ) ),
+				'action' => $act,
+				'dur'    => max( 0.5, (float) ( $jr['dur'] ?? 2 ) ),
+				'audio'  => '', 'text' => '',
+				'dir'    => 'kiri' === ( $jr['dir'] ?? '' ) ? 'kiri' : 'kanan',
+				'x'      => (float) ( $jr['x'] ?? 0 ),
+				'x2'     => (float) ( $jr['x2'] ?? 0 ),
+			);
+			$prows[] = $prow( $jr );
+		}
+		if ( ! $rows ) {
+			continue;
+		}
+		foreach ( $rows as $r ) {
+			if ( '' !== $r['char'] && ! in_array( $r['char'], $chars, true ) ) {
+				$chars[] = $r['char'];
+			}
+		}
+		$looks = array();
+		foreach ( (array) ( $js['looks'] ?? array() ) as $cn => $lk ) {
+			$looks[ sanitize_key( (string) $cn ) ] = sanitize_key( (string) $lk );
+		}
+		$scenes[] = array(
+			'bg' => $bg, 'chars' => $chars, 'look' => $looks, 'prompt' => '',
+			'rows' => $rows, 'transition_out' => sanitize_key( (string) ( $js['transition_out'] ?? '' ) ),
+		);
+		$plans[] = array( 'looks' => $looks, 'rows' => $prows );
+	}
+
+	// VO yang terlewat AI → tempel ke scene terakhir (dialog tidak hilang).
+	foreach ( (array) ( $cat['vo'] ?? array() ) as $vid => $v ) {
+		if ( empty( $used_vo[ $vid ] ) && $scenes ) {
+			$warns[] = 'vo ' . $v['name'] . ' tidak dipilih AI — ditempel di akhir.';
+			$li = count( $scenes ) - 1;
+			$scenes[ $li ]['rows'][] = $vo_row( $v );
+			$plans[ $li ]['rows'][] = array( 'expr' => 'netral' );
+		}
+	}
+
+	// Fallback deterministik bila AI gagal → 1 scene, VO berurutan.
+	if ( ! $scenes && ! empty( $cat['vo'] ) ) {
+		$rows = array();
+		$chars = array();
+		foreach ( (array) $cat['vo'] as $v ) {
+			$rows[] = $vo_row( $v );
+			if ( '' !== $v['char'] && ! in_array( $v['char'], $chars, true ) ) {
+				$chars[] = $v['char'];
+			}
+		}
+		$scenes = array( array(
+			'bg' => $bg_ids ? $bg_ids[0]['file'] : '', 'chars' => $chars, 'look' => array(),
+			'prompt' => '', 'rows' => $rows, 'transition_out' => '',
+		) );
+		$plans  = array( array( 'looks' => array(), 'rows' => array_fill( 0, count( $rows ), array( 'expr' => 'netral' ) ) ) );
+		$warns[] = 'AI tidak menghasilkan storyboard — dipakai susunan deterministik (VO berurutan).';
+	}
+
+	return array( 'scenes' => $scenes, 'plans' => $plans, 'warns' => $warns );
+}
+
 /* ============================ ORKESTRASI ============================ */
 
 function cc_cartoon_run( $p, $job, $session_id, $cx, $step ) {
 	$scenes    = (array) ( $p['scenes'] ?? array() );
-	if ( ! $scenes ) {
-		throw new CC_Control_Abort( 'Storyboard kosong — tambahkan minimal satu scene.' );
-	}
 	$chars_dir = (string) ( $p['chars_dir'] ?? '' );
 	$sfx_dir   = (string) ( $p['sfx_dir'] ?? '' );
 	$broll_dir = (string) ( $p['broll_dir'] ?? '' );
+	$bg_dir    = (string) ( $p['bg_dir'] ?? '' );
+	$vo_dir    = (string) ( $p['vo_dir'] ?? '' );
 	$prompt_g  = (string) ( $p['prompt'] ?? '' );
+	$story_mode = ! $scenes; // storyboard disusun AI dari prompt + aset
 
-	// 1. Katalog karakter + SFX + B-roll.
+	// 1. Scrape seluruh aset: karakter + latar + VO + SFX + B-roll.
 	$cat = $step(
-		'Memindai karakter, SFX & B-Roll',
-		function () use ( $chars_dir, $sfx_dir, $broll_dir, $cx ) {
-			$cc    = cc_cartoon_catalog_chars( $chars_dir );
-			$sfx   = cc_cartoon_catalog_sfx( $sfx_dir );
-			$broll = '' !== $broll_dir && function_exists( 'cc_assembly_catalog_dir' ) ? (array) cc_assembly_catalog_dir( $broll_dir, 'broll', false )['brolls'] : array();
-			return array( 'chars' => $cc, 'sfx' => $sfx, 'brolls' => (array) $broll );
+		'Memindai aset (karakter, latar, VO, SFX, B-Roll)',
+		function () use ( $chars_dir, $sfx_dir, $broll_dir, $bg_dir, $vo_dir ) {
+			$broll = array();
+			if ( '' !== $broll_dir && function_exists( 'cc_assembly_catalog_dir' ) ) {
+				$br = cc_assembly_catalog_dir( $broll_dir, 'broll', false );
+				if ( ! is_wp_error( $br ) ) {
+					$broll = $br;
+				}
+			}
+			return array(
+				'chars'  => cc_cartoon_catalog_chars( $chars_dir ),
+				'sfx'    => cc_cartoon_catalog_sfx( $sfx_dir ),
+				'brolls' => $broll,
+				'bg'     => cc_cartoon_catalog_bg( $bg_dir ),
+				'vo'     => cc_cartoon_catalog_vo( $vo_dir ),
+			);
 		}
 	);
 
-	// 2. AI Director per scene.
-	$plans = $p['_scene_plan'] ?? null;
+	$story_warns = array();
+	// 2a. Story mode: teks naskah → VO, lalu AI menyusun scenes + plans utuh.
+	if ( $story_mode ) {
+		$script      = cc_cartoon_script_lines( $prompt_g );
+		$vo_cat      = (array) $cat['vo'];
+		$story_warns = cc_cartoon_map_dialog( $vo_cat, $script );
+		$story_warns = array_merge( $story_warns, cc_cartoon_story_transcribe( $vo_cat ) );
+		$cat['vo']   = $vo_cat;
+		if ( ! $cat['vo'] ) {
+			$story_warns[] = 'Tidak ada file VO di vo_dir — baris bicara tanpa audio.';
+		}
+		$jscenes = $step(
+			'AI menyusun storyboard (' . count( $cat['vo'] ) . ' dialog, ' . count( $cat['bg'] ) . ' latar)',
+			function () use ( $prompt_g, $cat ) {
+				return cc_cartoon_plan_story( $prompt_g, $cat );
+			}
+		);
+		$built       = cc_cartoon_story_scenes( $jscenes, $cat );
+		$scenes      = $built['scenes'];
+		$plans       = $built['plans'];
+		$story_warns = array_merge( $story_warns, $built['warns'] );
+		if ( ! $scenes ) {
+			throw new CC_Control_Abort( new WP_Error( 'cc_storyboard', 'AI tidak menghasilkan scene dan tidak ada VO sebagai fallback.' ) );
+		}
+	}
+
+	// 2b. AI Director per scene (mode manual / scenes eksplisit).
+	$resumed = ! empty( $p['_scene_plan'] );
+	$plans   = $p['_scene_plan'] ?? $plans ?? null;
 	if ( ! is_array( $plans ) ) {
 		$plans = $step(
 			'AI menyusun rencana ' . count( $scenes ) . ' scene',
@@ -749,8 +1108,9 @@ function cc_cartoon_run( $p, $job, $session_id, $cx, $step ) {
 				return $out;
 			}
 		);
-		// 3. Gate review — baris aksi + sprite pilihan jadi item kartu.
-		if ( ! empty( $p['edl_review'] ) && function_exists( 'cc_edl_review_pause' ) ) {
+	}
+	// 3. Gate review — hanya saat plan baru disusun (resume tidak mengulang).
+	if ( ! $resumed && ! empty( $p['edl_review'] ) && function_exists( 'cc_edl_review_pause' ) ) {
 			$rev_items = cc_cartoon_review_items( $scenes, $plans, $cat['chars'] );
 			$sp_cat    = cc_cartoon_sprite_cat( $cat['chars'] );
 			$sfxs      = array();
@@ -760,10 +1120,9 @@ function cc_cartoon_run( $p, $job, $session_id, $cx, $step ) {
 			cc_edl_review_pause(
 				$job, $session_id, $p,
 				array( array( 'kind' => 'cartoon', 'scenes' => $scenes, 'plans' => $plans, 'items' => $rev_items['items'], 'dur' => $rev_items['dur'], 'label' => 'Storyboard' ) ),
-				array( 'brolls' => array_values( $sp_cat ), 'sfxs' => $sfxs )
+				array( 'brolls' => array_values( $sp_cat ), 'sfxs' => $sfxs, 'chars' => $cat['chars'] )
 			);
-			return true;
-		}
+			return array( '_waiting' => true );
 	}
 
 	// 4. Proyek kosong + koreografi.
@@ -804,10 +1163,10 @@ function cc_cartoon_run( $p, $job, $session_id, $cx, $step ) {
 			return is_wp_error( $r ) ? $r : true;
 		}
 	);
-	$warns = array_merge( (array) ( $gen['warns'] ?? array() ), (array) ( $cat['chars']['warns'] ?? array() ) );
+	$warns = array_merge( (array) $story_warns, (array) ( $gen['warns'] ?? array() ), (array) ( $cat['chars']['warns'] ?? array() ) );
 	$warn  = $warns ? ' Catatan: ' . count( $warns ) . ' peringatan aset.' : '';
 	return array(
 		'body' => 'Proyek kartun **' . ( $p['name'] ?? 'kartun' ) . '** siap di `' . $project . '` — ' . count( $scenes ) . ' scene, ' . round( (float) ( $gen['duration'] ?? 0 ), 1 ) . 's.' . $warn,
-		'meta' => array( 'workflow' => 'cartoon', 'scenes' => count( $scenes ), 'duration' => (float) ( $gen['duration'] ?? 0 ), 'warns' => $warns ),
+		'meta' => array( 'workflow' => 'cartoon', 'scenes' => count( $scenes ), 'duration' => (float) ( $gen['duration'] ?? 0 ), 'warns' => $warns, 'project' => $project ),
 	);
 }

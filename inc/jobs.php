@@ -67,6 +67,13 @@ function cc_job_run_worker( $job_id ) {
 				cc_job_update( $job_id, array( 'status' => 'waiting' ) );
 			} else {
 				$finish( 'done', (string) ( $res['body'] ?? '' ), $res['meta'] ?? null );
+				// Bind proyek hasil rakitan ke sesi — workflow 'clip' sengaja
+				// tidak bind (multi-proyek per run, bukan 1 proyek kerja).
+				$pl = json_decode( (string) $job->payload, true );
+				$wf = is_array( $pl ) ? (string) ( $pl['workflow'] ?? 'clip' ) : 'clip';
+				if ( 'clip' !== $wf && ! empty( $res['meta']['project'] ) && function_exists( 'cc_session_project_set' ) ) {
+					cc_session_project_set( $job->session_id, (string) $res['meta']['project'] );
+				}
 			}
 			return;
 		}
@@ -87,7 +94,16 @@ function cc_agent_turn( $job ) {
 
 	// Conversation = last non-task messages of the session, newest user
 	// message last. Bodies are clipped so the prompt stays bounded.
-	$messages = array( array( 'role' => 'system', 'content' => cc_openai_prompt() ) );
+	$prompt = cc_openai_prompt();
+	// Sesi dengan proyek terikat (hasil control_run): lifecycle proyek
+	// diurus sistem — AI tidak lagi memanggil open/save/close sendiri.
+	$bound  = function_exists( 'cc_session_project_get' ) ? cc_session_project_get( $job->session_id ) : '';
+	if ( '' !== $bound ) {
+		$prompt .= "\n\nPROYEK TERIKAT: {$bound} — semua perintah edit di sesi ini menargetkan proyek ini. "
+			. 'JANGAN panggil project_open/project_save/project_close — sistem membuka, menyimpan, dan menutupnya otomatis. '
+			. 'Parameter project pada tool edit boleh dikosongkan; sistem mengisinya dengan proyek terikat.';
+	}
+	$messages = array( array( 'role' => 'system', 'content' => $prompt ) );
 	$rows     = cc_messages_for_session( $job->session_id );
 	$history  = array();
 	foreach ( $rows as $m ) {
@@ -109,8 +125,21 @@ function cc_agent_turn( $job ) {
 		'session_id' => (int) $job->session_id,
 		'cx'         => $cx,
 		'task_cb'    => null, // bound per tool call below
+		'_bound'     => array(), // proyek terikat yang dibuka turn ini
 	);
 
+	try {
+		return cc_agent_turn_loop( $job, $messages, $ctx );
+	} finally {
+		// Proyek terikat yang dibuka wrapper tool — simpan lalu tutup
+		// agar lock "Remote API" lepas, apa pun hasil turn ini.
+		CC_Tools::bound_release( $ctx );
+		$cx->close();
+	}
+}
+
+/** Isi agent loop — dipisah agar caller bisa finally-release proyek terikat. */
+function cc_agent_turn_loop( $job, $messages, &$ctx ) {
 	$max    = cc_max_iter();
 	$tokens = 0;
 	$final  = '';
@@ -180,8 +209,6 @@ function cc_agent_turn( $job ) {
 			);
 		}
 	}
-
-	$cx->close();
 
 	if ( '' === $final ) {
 		return new WP_Error( 'cc_iter', "AI tidak menghasilkan jawaban akhir dalam {$max} iterasi — coba perintah yang lebih spesifik." );

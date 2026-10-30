@@ -111,6 +111,7 @@ function cc_edl_review_pause( $job, $session_id, &$p, $seg_plans, $catalog ) {
 		}
 		$segs_meta[] = array(
 			'idx'   => (int) $gi,
+			'kind'  => (string) ( $plan['kind'] ?? '' ),
 			'label' => (string) ( $plan['label'] ?? 'Bagian ' . ( $gi + 1 ) ),
 			'dur'   => round( (float) ( $plan['dur'] ?? 0 ), 2 ),
 			'items' => $items,
@@ -148,11 +149,12 @@ function cc_edl_review_pause( $job, $session_id, &$p, $seg_plans, $catalog ) {
 		'seg_plans'=> $seg_plans,
 	);
 
+	$is_cartoon = 'cartoon' === (string) ( $segs_meta[0]['kind'] ?? '' );
 	$meta = array(
 		'type'    => 'edl_review',
 		'job_id'  => (int) $job->id,
 		'state'   => 'pending',
-		'title'   => 'Review rencana B-Roll — ' . (string) ( $p['name'] ?? 'proyek' ),
+		'title'   => ( $is_cartoon ? 'Review storyboard kartun — ' : 'Review rencana B-Roll — ' ) . (string) ( $p['name'] ?? 'proyek' ),
 		'segs'    => $segs_meta,
 		'catalog' => $cat_meta,
 	);
@@ -163,18 +165,19 @@ function cc_edl_review_pause( $job, $session_id, &$p, $seg_plans, $catalog ) {
 	$card_id = cc_message_add(
 		$session_id,
 		'review',
-		'Review rencana B-Roll (' . $n_items . ' sisipan)',
+		$is_cartoon ? 'Review storyboard kartun (' . $n_items . ' baris aksi)' : 'Review rencana B-Roll (' . $n_items . ' sisipan)',
 		$meta,
 		'pending'
 	);
 	$p['_review']['card_id'] = (int) $card_id;
 
 	// Settle placeholder + simpan konteks; status 'waiting' diset worker.
+	$what = $is_cartoon ? 'storyboard kartun' : 'rencana B-Roll';
 	cc_message_update(
 		$job->message_id,
-		array( 'body' => '⏸ Menunggu review rencana B-Roll — periksa kartu di atas.', 'status' => 'waiting' )
+		array( 'body' => '⏸ Menunggu review ' . $what . ' — periksa kartu di atas.', 'status' => 'waiting' )
 	);
-	cc_job_update( $job->id, array( 'payload' => wp_json_encode( $p ), 'detail' => 'Menunggu review rencana B-Roll' ) );
+	cc_job_update( $job->id, array( 'payload' => wp_json_encode( $p ), 'detail' => 'Menunggu review ' . $what ) );
 	return true;
 }
 

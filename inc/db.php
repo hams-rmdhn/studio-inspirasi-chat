@@ -10,7 +10,7 @@ if ( ! defined( 'ABSPATH' ) ) {
 	exit;
 }
 
-define( 'CC_DB_VERSION', '1.0.2' );
+define( 'CC_DB_VERSION', '1.0.3' );
 
 function cc_table( $name ) {
 	global $wpdb;
@@ -29,6 +29,7 @@ function cc_install_tables() {
 		id bigint(20) unsigned NOT NULL AUTO_INCREMENT,
 		user_id bigint(20) unsigned NOT NULL DEFAULT 0,
 		title varchar(200) NOT NULL DEFAULT '',
+		project varchar(500) NOT NULL DEFAULT '',
 		sort int(11) NOT NULL DEFAULT 0,
 		created_at datetime NOT NULL,
 		updated_at datetime NOT NULL,
@@ -140,6 +141,27 @@ function cc_session_rename( $id, $title ) {
 		cc_table( 'sessions' ),
 		array( 'title' => sanitize_text_field( $title ), 'updated_at' => current_time( 'mysql' ) ),
 		array( 'id' => absint( $id ) )
+	);
+}
+
+/** Path proyek Studio Inspirasi yang terikat ke sesi ('' = belum ada). */
+function cc_session_project_get( $id ) {
+	$s = cc_session_get( $id );
+	return $s ? (string) ( $s->project ?? '' ) : '';
+}
+
+/** Ikatkan proyek ke sesi — dipanggil worker setelah control_run non-clip selesai. */
+function cc_session_project_set( $id, $path ) {
+	global $wpdb;
+	$wpdb->update(
+		cc_table( 'sessions' ),
+		array(
+			'project'    => wp_normalize_path( (string) $path ),
+			'updated_at' => current_time( 'mysql' ),
+		),
+		array( 'id' => absint( $id ) ),
+		array( '%s', '%s' ),
+		array( '%d' )
 	);
 }
 

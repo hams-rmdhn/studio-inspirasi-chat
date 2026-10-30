@@ -761,6 +761,10 @@ function cc_control_enqueue( $params ) {
 			. ' — B-Roll: ' . basename( (string) ( $params['broll_dir'] ?? '' ) )
 			. ' — segmen: ' . $segs_txt
 			. ' — aksi: ' . $act_txt;
+	} elseif ( 'cartoon' === $wf ) {
+		$summary = 'Mode: Animasi Kartun — karakter: ' . basename( (string) ( $params['chars_dir'] ?? '' ) )
+			. ' — ' . count( (array) ( $params['scenes'] ?? array() ) ) . ' scene'
+			. ' — aksi: ' . $act_txt;
 	} else {
 		$summary = 'Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
 			. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
@@ -862,6 +866,12 @@ function cc_control_run( $job ) {
 		// Resume review — _scene_plan hasil persetujuan user menggantikan plan AI.
 		if ( ! empty( $p['_edl_resume'] ) && isset( $p['_review']['seg_plans'][0]['plans'] ) ) {
 			$p['_scene_plan'] = (array) $p['_review']['seg_plans'][0]['plans'];
+			// Story mode: scenes hasil materialize ikut dipulihkan agar resume
+			// tidak mengulang pipeline story (AI + STT) dan tetap konsisten
+			// dengan yang direview user.
+			if ( empty( $p['scenes'] ) && isset( $p['_review']['seg_plans'][0]['scenes'] ) ) {
+				$p['scenes'] = (array) $p['_review']['seg_plans'][0]['scenes'];
+			}
 		}
 		try {
 			$res = cc_cartoon_run( $p, $job, $session_id, $cx, $step );
@@ -1129,6 +1139,11 @@ function cc_control_run( $job ) {
 			$bodies[] = (string) ( $r['body'] ?? '' );
 			if ( ! empty( $r['meta']['video_url'] ) ) {
 				$meta['video_url'] = $r['meta']['video_url'];
+			}
+			// Proyek terakhir yang dihasilkan — untuk auto-bind sesi
+			// (dipakai worker; workflow 'clip' tetap di-skip di sana).
+			if ( ! empty( $r['meta']['project'] ) ) {
+				$meta['project'] = $r['meta']['project'];
 			}
 		} catch ( CC_Control_Abort $e ) {
 			if ( 'cc_cancelled' === $e->wp_error->get_error_code() ) {
@@ -1748,7 +1763,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			);
 			return array(
 				'body' => 'Proyek **' . ( $p['name'] ?? 'project' ) . '** siap di `' . $project . '` — buka di Studio Inspirasi untuk ditinjau & diekspor manual.' . $warn,
-				'meta' => $meta,
+				'meta' => $meta + array( 'project' => $project ),
 			);
 		}
 
@@ -1805,7 +1820,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 		return array(
 			'body' => 'Selesai — hasil export ada di `' . wp_normalize_path( $output ) . '`'
 				. ( ! empty( $meta['video_url'] ) ? ' (tersedia juga di bawah).' : '' ) . $warn,
-			'meta' => $meta,
+			'meta' => $meta + array( 'project' => $project ),
 		);
 	} catch ( Throwable $e ) {
 		if ( $e instanceof CC_Control_Abort ) {
