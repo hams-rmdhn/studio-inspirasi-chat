@@ -148,7 +148,7 @@ function cc_cartoon_norm_anchor( $file ) {
 	}
 	$ff  = function_exists( 'cc_control_ffmpeg_bin' ) ? cc_control_ffmpeg_bin() : 'ffmpeg';
 	$out = @shell_exec( sprintf( '%s -i %s -vf cropdetect -f null - 2>&1', escapeshellarg( $ff ), escapeshellarg( $file ) ) );
-	$frac = 1.0;
+	$frac = array( 'feet' => 1.0, 'vis_h' => 1.0 );
 	if ( $out && preg_match( '/crop=(\d+):(\d+):(\d+):(\d+)/', $out, $m ) ) {
 		$crop_h   = (int) $m[2];
 		$crop_y   = (int) $m[4];
@@ -157,11 +157,29 @@ function cc_cartoon_norm_anchor( $file ) {
 			$img_h = (int) $d[2];
 		}
 		if ( $img_h > 0 ) {
-			$frac = min( 1.0, max( 0.0, ( $crop_y + $crop_h ) / $img_h ) );
+			$frac['feet']  = min( 1.0, max( 0.0, ( $crop_y + $crop_h ) / $img_h ) );
+			$frac['vis_h'] = min( 1.0, max( 0.05, $crop_h / $img_h ) );
 		}
 	}
 	$cache[ $file ] = $frac;
 	return $frac;
+}
+
+/** Fraksi kaki pada kanvas (kompat lama). */
+function cc_cartoon_feet( $file ) {
+	return (float) cc_cartoon_norm_anchor( $file )['feet'];
+}
+
+/**
+ * Transform karakter: scale = height/vis_h (bagian terlihat PNG setinggi
+ * `height` fraksi frame, ruang transparan tak ikut membesar), offsetY agar
+ * kaki menjejak $feet_line, offsetX posisi horizontal.
+ */
+function cc_cartoon_char_tf( $file, $height, $feet_line, $ox ) {
+	$a     = cc_cartoon_norm_anchor( $file );
+	$vis   = max( 0.05, (float) $a['vis_h'] );
+	$scale = min( 4.0, $height / $vis );
+	return array( 'scale' => $scale, 'offsetX' => $ox, 'offsetY' => $feet_line - $scale * ( (float) $a['feet'] - 0.5 ) );
 }
 
 /* ============================ AI PLANNER ============================ */
@@ -414,18 +432,22 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 		$spans     = cc_cartoon_row_spans( $rows );
 		$scene_dur = array_sum( $spans );
 
-		// Latar di T1 sepanjang scene.
+		// Latar di T1 sepanjang scene — frameClip fill memenuhi kanvas.
 		$bg = (string) ( $sc['bg'] ?? '' );
 		if ( '' !== $bg && is_file( $bg ) ) {
 			$bgimp = $import_file( $bg );
 			if ( $bgimp ) {
-				$add_clip( 'T1', $bgimp, $st0, $scene_dur, null, array( 'visualMotion' => array( 'entrance' => 1, 'exit' => 1, 'duration' => 0.4 ) ) );
+				$bgc = $add_clip( 'T1', $bgimp, $st0, $scene_dur, null, array( 'visualMotion' => array( 'entrance' => 1, 'exit' => 1, 'duration' => 0.4 ) ) );
+				if ( $bgc ) {
+					$cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'frameClip', 'clipId' => $bgc, 'framing' => 'fill', 'at' => 0.0 ) ), 20 );
+				}
 			}
 		}
 
-		// Track per karakter + posisi x default (kiri/kanan bergantian).
-		foreach ( (array) ( $sc['chars'] ?? array() ) as $ci => $cn ) {
-			if ( isset( $char_tracks[ $cn ] ) ) {
+		// Track per karakter — dari sc.chars MAUPUN char yang muncul di rows.
+		$scene_chars = array_unique( array_merge( (array) ( $sc['chars'] ?? array() ), array_map( function ( $r ) { return (string) ( $r['char'] ?? '' ); }, $rows ) ) );
+		foreach ( $scene_chars as $ci => $cn ) {
+			if ( '' === $cn || isset( $char_tracks[ $cn ] ) ) {
 				continue;
 			}
 			$at = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'addTrack', 'kind' => 'video', 'top' => true ) ), 20 );
@@ -435,8 +457,13 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			$char_tracks[ $cn ] = (string) ( $at['createdId'] ?? $at['created_id'] ?? '' );
 		}
 		$char_x = array();
-		foreach ( (array) ( $sc['chars'] ?? array() ) as $ci => $cn ) {
-			$char_x[ $cn ] = 0 === $ci % 2 ? -0.22 : 0.22; // kiri, kanan, kiri, …
+		$xi     = 0;
+		foreach ( $scene_chars as $cn ) {
+			if ( '' === $cn ) {
+				continue;
+			}
+			$char_x[ $cn ] = 0 === $xi % 2 ? -0.22 : 0.22; // kiri, kanan, kiri, …
+			$xi++;
 		}
 
 		// Baris aksi.
@@ -472,8 +499,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					if ( ! $imp ) {
 						continue;
 					}
-					$feet = cc_cartoon_norm_anchor( $spk['file'] );
-					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, array( 'scale' => $scale, 'offsetX' => $pos_x, 'offsetY' => $feet_line - $scale * ( $feet - 0.5 ) ) );
+					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x ) );
 				}
 				// Audio dialog.
 				if ( 'bicara' === $act && '' !== (string) ( $r['audio'] ?? '' ) && is_file( (string) $r['audio'] ) ) {
@@ -504,9 +530,8 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 						continue;
 					}
 					$st_at = $rt + $k * $seg;
-					$feet  = cc_cartoon_norm_anchor( $spk['file'] );
 					$ox    = $pos_x + ( $x1 - $pos_x ) * ( $k / max( 1, $n - 1 ) );
-					$add_clip( $trk, $imp, $st_at, $seg, array( 'scale' => $height, 'offsetX' => $ox, 'offsetY' => $feet_line - $height * ( $feet - 0.5 ) ) );
+					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox ) );
 					// SFX step sinkron tiap pergantian pose.
 					if ( $step_sfx ) {
 						if ( '' === $sfx_tr ) {
@@ -521,10 +546,9 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			} elseif ( in_array( $act, array( 'masuk', 'keluar', 'zoom' ), true ) ) {
 				$spk = cc_cartoon_pick_sprite( $spr, $look, $expr, 'diam' );
 				if ( $spk && ( $imp = $import_file( $spk['file'] ) ) ) {
-					$feet  = cc_cartoon_norm_anchor( $spk['file'] );
 					$scale = 'zoom' === $act ? $height * 1.15 : $height;
 					$add_clip( $trk, $imp, $rt, $dur,
-						array( 'scale' => $scale, 'offsetX' => $pos_x, 'offsetY' => $feet_line - $scale * ( $feet - 0.5 ) ),
+						cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x ),
 						array( 'visualMotion' => array( 'entrance' => 'masuk' === $act ? 2 : 0, 'exit' => 'keluar' === $act ? 2 : 0, 'duration' => 0.35 ) ) );
 				}
 			}
