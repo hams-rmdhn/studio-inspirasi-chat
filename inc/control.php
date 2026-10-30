@@ -857,6 +857,35 @@ function cc_control_run( $job ) {
 		}
 	}
 
+	// Mode 'cartoon' (storyboard multi-scene → animasi karakter) punya jalur sendiri.
+	if ( 'cartoon' === ( $p['workflow'] ?? 'clip' ) && function_exists( 'cc_cartoon_run' ) ) {
+		// Resume review — _scene_plan hasil persetujuan user menggantikan plan AI.
+		if ( ! empty( $p['_edl_resume'] ) && isset( $p['_review']['seg_plans'][0]['plans'] ) ) {
+			$p['_scene_plan'] = (array) $p['_review']['seg_plans'][0]['plans'];
+		}
+		try {
+			$res = cc_cartoon_run( $p, $job, $session_id, $cx, $step );
+			$cx->close();
+			return $res;
+		} catch ( CC_Control_Abort $e ) {
+			$cp = cc_control_track_project();
+			if ( '' !== $cp ) {
+				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
+				cc_control_track_project( '' );
+			}
+			$cx->close();
+			return $e->wp_error;
+		} catch ( Throwable $e ) {
+			$cp = cc_control_track_project();
+			if ( '' !== $cp ) {
+				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
+				cc_control_track_project( '' );
+			}
+			$cx->close();
+			return new WP_Error( 'cc_cartoon_err', $e->getMessage() );
+		}
+	}
+
 	// YouTube: unduh video + caption SEKALI sebelum semua segmen.
 	if ( cc_control_is_yt( $p['file'] ?? '' ) ) {
 		try {

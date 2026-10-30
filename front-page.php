@@ -99,10 +99,11 @@ get_header();
 						<option value="clip">Potong Video (Clipper — 1 video jadi klip pendek)</option>
 						<option value="broll">Talking Head + Auto B-Roll & SFX (AI)</option>
 						<option value="assembly">Rakit Penuh dari Voice Over + B-Roll & SFX (AI)</option>
+						<option value="cartoon">Animasi Kartun (storyboard + sprite karakter)</option>
 					</select>
 				</label>
 
-				<div class="cc-field"><span>Sumber komposisi</span>
+				<div class="cc-field" x-show="ctl.f.workflow !== 'cartoon'"><span>Sumber komposisi</span>
 					<div class="cc-tabs">
 						<button type="button" @click="ctl.f.src = 'template'" :class="ctl.f.src === 'template' && 'cc-tab-on'" class="cc-tab">Dari template</button>
 						<button type="button" @click="ctl.f.src = 'baru'" :class="ctl.f.src === 'baru' && 'cc-tab-on'" class="cc-tab">Proyek baru</button>
@@ -129,7 +130,16 @@ get_header();
 					</select>
 				</label>
 
-				<label class="cc-field" x-show="ctl.f.workflow !== 'assembly'">
+				<label class="cc-field" x-show="ctl.f.workflow === 'cartoon'" x-cloak>
+					<span>Folder karakter (sprite PNG + CSV)</span>
+					<div class="cc-filerow">
+						<input type="text" x-model="ctl.f.chars_dir" class="cc-input" placeholder="/Users/.../characters — berisi subfolder per karakter">
+						<button type="button" @click="ctlBrowseOpen('chars_dir', 'dir')" class="cc-btn">Pilih Folder</button>
+					</div>
+					<small class="cc-note">Tiap subfolder = satu karakter; isi PNG + <code>&lt;nama&gt;.csv</code> (file,look,ekspresi,varian,height).</small>
+				</label>
+
+				<label class="cc-field" x-show="ctl.f.workflow !== 'assembly' && ctl.f.workflow !== 'cartoon'">
 					<span x-text="ctl.f.workflow === 'broll' ? 'Video utama (Talking Head)' : 'File video'"></span>
 					<div class="cc-filerow">
 						<input type="text" x-model="ctl.f.file" @input="ctlSuggestName()" class="cc-input" placeholder="/path/ke/video.mp4 atau URL YouTube">
@@ -179,6 +189,32 @@ get_header();
 					</div>
 				</template>
 
+				<template x-if="ctl.f.workflow === 'cartoon'">
+					<div style="display:flex;flex-direction:column;gap:1rem">
+						<label class="cc-field"><span>Musik latar / BGM <em class="cc-tag">opsional</em></span>
+							<div class="cc-filerow">
+								<input type="text" x-model="ctl.f.bgm_file" class="cc-input" placeholder="/path/ke/bgm.mp3">
+								<button type="button" @click="ctlBrowseOpen('bgm_file', 'file')" class="cc-btn">Browse</button>
+								<input type="number" x-model.number="ctl.f.bgm_vol" step="0.05" min="0" max="1" class="cc-input cc-input-num" title="Volume BGM (0-1)">
+							</div>
+							<small class="cc-note">Dipasang di track audio paling bawah sepanjang video.</small>
+						</label>
+						<label class="cc-field"><span>Transisi antar scene</span>
+							<select x-model="ctl.f.transition" class="cc-input">
+								<option value="fade">Fade</option>
+								<option value="slide">Slide</option>
+								<option value="pop">Pop</option>
+								<option value="none">Cut (langsung)</option>
+							</select>
+						</label>
+						<label class="cc-field"><span>Instruksi AI global <em class="cc-tag">opsional</em></span>
+							<textarea x-model="ctl.f.prompt" class="cc-input" rows="2" placeholder="Gaya edukasi anak, ceria, banyak SFX…"></textarea>
+						</label>
+					</div>
+				</template>
+
+				<template x-if="ctl.f.workflow !== 'cartoon'">
+				<div>
 				<label class="cc-field"><span>Caption & transkrip bahasa</span>
 					<select x-model="ctl.f.cap_lang" class="cc-input">
 						<option value="id">Indonesia (auto-caption / Whisper)</option>
@@ -194,13 +230,81 @@ get_header();
 					</div>
 					<small class="cc-note">Kosongkan untuk memakai subtitle YouTube atau transkrip Whisper otomatis.</small>
 				</label>
+				</div>
+				</template>
 
 				</div>
 
 				<!-- LANGKAH 3: Segmen, Potong & Arahan AI -->
 				<div x-show="ctl.step === 2">
-				<h4 class="cc-sec">Segmen & Arahan AI</h4>
-				<template x-if="ctl.f.workflow !== 'assembly'">
+				<h4 class="cc-sec" x-text="ctl.f.workflow === 'cartoon' ? 'Storyboard' : 'Segmen & Arahan AI'"></h4>
+				<template x-if="ctl.f.workflow === 'cartoon'">
+					<div style="display:flex;flex-direction:column;gap:1rem">
+						<template x-for="(sc, si) in ctl.f.scenes" :key="si">
+							<div class="cc-field" style="border:1px solid var(--cc-border,rgba(148,163,184,.25));border-radius:10px;padding:.8rem">
+								<div style="display:flex;align-items:center;justify-content:space-between">
+									<strong x-text="'Scene ' + (si+1)"></strong>
+									<button type="button" @click="ctl.f.scenes.splice(si,1)" x-show="ctl.f.scenes.length>1" class="cc-set" title="Hapus scene"><i data-lucide="x" class="w-4 h-4"></i></button>
+								</div>
+								<div class="cc-filerow" style="margin-top:.5rem">
+									<input type="text" x-model="sc.bg" class="cc-input" placeholder="Latar: /path/gambar.png">
+									<button type="button" @click="ctlBrowseOpen('scene_bg_'+si, 'file')" class="cc-btn">Browse</button>
+								</div>
+								<div class="cc-filerow" style="margin-top:.4rem">
+									<span class="cc-note">Karakter:</span>
+									<template x-for="cn in ctl.f.scene_chars" :key="cn">
+										<label class="cc-note" style="display:flex;gap:.25rem;align-items:center;margin:0">
+											<input type="checkbox" :checked="sc.chars.includes(cn)" @change="sc.chars.includes(cn) ? sc.chars.splice(sc.chars.indexOf(cn),1) : sc.chars.push(cn)" x-text="">
+											<span x-text="cn"></span>
+										</label>
+									</template>
+									<input type="text" x-model="ctl.new_char" placeholder="+ karakter" class="cc-input cc-input-num" style="width:7rem" @keydown.enter.prevent="if(ctl.new_char && !ctl.f.scene_chars.includes(ctl.new_char)){ctl.f.scene_chars.push(ctl.new_char); ctl.new_char=''}">
+								</div>
+								<input type="text" x-model="sc.prompt" class="cc-input" style="margin-top:.4rem" placeholder="Instruksi scene (opsional): suasana kelas pagi…">
+								<div style="margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem">
+									<template x-for="(r, ri) in sc.rows" :key="ri">
+										<div class="cc-segrow" style="flex-wrap:wrap">
+											<select x-model="r.char" class="cc-input" style="width:6rem">
+												<template x-for="cn in sc.chars" :key="cn"><option :value="cn" x-text="cn"></option></template>
+											</select>
+											<select x-model="r.action" class="cc-input" style="width:6.5rem">
+												<option value="bicara">bicara</option><option value="diam">diam</option>
+												<option value="jalan">jalan</option><option value="zoom">zoom</option>
+												<option value="masuk">masuk</option><option value="keluar">keluar</option>
+											</select>
+											<template x-if="r.action === 'bicara'">
+												<span style="display:flex;gap:.3rem;flex:1">
+													<input type="text" x-model="r.audio" class="cc-input" placeholder="audio.mp3" title="File audio dialog">
+													<input type="text" x-model="r.text" class="cc-input" placeholder="teks dialog (caption)" title="Teks caption">
+												</span>
+											</template>
+											<template x-if="r.action === 'jalan'">
+												<span style="display:flex;gap:.3rem;align-items:center">
+													<select x-model="r.dir" class="cc-input" style="width:5rem"><option value="kanan">→ kanan</option><option value="kiri">← kiri</option></select>
+													<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input cc-input-num" title="Durasi (s)"><span class="cc-note">s</span>
+												</span>
+											</template>
+											<template x-if="['diam','masuk','keluar','zoom'].includes(r.action)">
+												<span style="display:flex;gap:.3rem;align-items:center">
+													<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input cc-input-num" title="Durasi (s)"><span class="cc-note">s</span>
+												</span>
+											</template>
+											<button type="button" @click="sc.rows.splice(ri,1)" class="cc-set" title="Hapus baris"><i data-lucide="x" class="w-4 h-4"></i></button>
+										</div>
+									</template>
+								</div>
+								<button type="button" @click="sc.rows.push({char: sc.chars[0]||'', action:'bicara', dur:2, audio:'', text:'', dir:'kanan', x:0, x2:0})" class="cc-btn cc-btn-ghost cc-btn-sm" style="margin-top:.4rem">
+									<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah baris
+								</button>
+							</div>
+						</template>
+						<button type="button" @click="ctl.f.scenes.push({bg:'',chars:[],look:{},prompt:'',rows:[{char:'',action:'bicara',dur:2,audio:'',text:'',dir:'kanan',x:0,x2:0}]})" class="cc-btn cc-btn-ghost">
+							<i data-lucide="plus" class="w-4 h-4"></i> Tambah scene
+						</button>
+						<small class="cc-note">Baris <b>bicara</b>: audio dialog + teks caption — flap mulut otomatis. <b>jalan</b>: pose walk-cycle + gerak + SFX langkah. Karakter dari folder yang dipilih di Langkah 1.</small>
+					</div>
+				</template>
+				<template x-if="['clip','broll'].includes(ctl.f.workflow)">
 					<div style="display:flex;flex-direction:column;gap:1rem">
 						<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
 							<select x-model="ctl.f.mode" class="cc-input" style="margin-bottom:.55rem">
@@ -252,7 +356,7 @@ get_header();
 					</div>
 				</template>
 
-				<template x-if="ctl.f.workflow !== 'clip'">
+				<template x-if="['broll','assembly'].includes(ctl.f.workflow)">
 					<div style="display:flex;flex-direction:column;gap:1rem">
 						<label class="cc-field"><span>Ritme potongan B-Roll (Pacing)</span>
 							<select x-model="ctl.f.broll_pacing" class="cc-input">
@@ -291,7 +395,7 @@ get_header();
 					</div>
 				</template>
 
-				<template x-if="ctl.f.src === 'template'">
+				<template x-if="ctl.f.src === 'template' && ctl.f.workflow !== 'cartoon'">
 					<div class="cc-field"><span>Adaptasi template</span>
 						<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
 							<input type="checkbox" x-model="ctl.f.hook_ai"> Tulis ulang teks hook dengan AI

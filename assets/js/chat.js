@@ -321,6 +321,9 @@ function ccChat() {
 				silence_cut: false, silence_db: -35, silence_min: 0.5, silence_pad: 0.1,
 				segments: [{ start: '0:00', end: '0:10' }], name: '', action: 'handoff',
 				output_name: '', dest_dir: '', srt: '', cap_lang: 'id',
+				chars_dir: '', bgm_file: '', bgm_vol: 0.2, prompt: '', transition: 'fade',
+				scenes: [{ bg: '', chars: [], look: {}, prompt: '', rows: [{ char: '', action: 'bicara', dur: 2, audio: '', text: '', dir: 'kanan', x: 0, x2: 0 }] }],
+				scene_chars: [], new_char: '',
 			},
 			submitting: false, running: false, error: '', sessionId: 0,
 		},
@@ -329,6 +332,7 @@ function ccChat() {
 			const wf = this.ctl.f.workflow;
 			if (wf === 'assembly') { return ['Sumber & VO', 'B-Roll & SFX', 'Arahan AI', 'Proyek']; }
 			if (wf === 'broll') { return ['Sumber', 'B-Roll & Sub', 'Segmen & AI', 'Proyek']; }
+			if (wf === 'cartoon') { return ['Karakter', 'Audio & AI', 'Storyboard', 'Proyek']; }
 			return ['Sumber', 'Subtitle', 'Segmen', 'Proyek'];
 		},
 
@@ -422,16 +426,19 @@ function ccChat() {
 			this.ctl.error = '';
 			const f = this.ctl.f;
 			if (!f.name.trim()) { this.ctl.error = 'Nama proyek wajib diisi.'; return; }
-			if (f.src === 'template' && !f.template) { this.ctl.error = 'Pilih template dulu.'; return; }
+			if (f.workflow !== 'cartoon' && f.src === 'template' && !f.template) { this.ctl.error = 'Pilih template dulu.'; return; }
 			if (f.workflow === 'assembly') {
 				if (!f.vo_file.trim()) { this.ctl.error = 'File audio Voice Over wajib diisi.'; return; }
 				if (!f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
+			} else if (f.workflow === 'cartoon') {
+				if (!f.chars_dir.trim()) { this.ctl.error = 'Folder karakter wajib dipilih.'; return; }
+				if (!f.scenes.length || !f.scenes.some(s => s.rows.length)) { this.ctl.error = 'Storyboard butuh minimal satu baris aksi.'; return; }
 			} else {
 				if (!f.file.trim()) { this.ctl.error = 'File video wajib diisi.'; return; }
 				if (f.workflow === 'broll' && !f.broll_dir.trim()) { this.ctl.error = 'Folder video B-Roll wajib dipilih.'; return; }
 			}
 			const segments = [];
-			if (f.workflow !== 'assembly') {
+			if (!['assembly','cartoon'].includes(f.workflow)) {
 				for (const s of f.segments) {
 					const st = this.ccParseTime(s.start), en = this.ccParseTime(s.end);
 					if (st === null || en === null) { this.ctl.error = 'Format waktu tidak dikenali — pakai m:ss (mis. 6:02).'; return; }
@@ -446,6 +453,9 @@ function ccChat() {
 			try {
 				const d = await ccPost('/control/run', {
 					workflow: f.workflow,
+					chars_dir: f.chars_dir, bgm_file: f.bgm_file, bgm_vol: f.bgm_vol,
+					prompt: f.prompt, transition: f.transition,
+					scenes: JSON.stringify(f.scenes),
 					template: f.src === 'template' ? f.template : '',
 					template_label: f.src === 'template' ? f.template_label : '',
 					aspect: f.aspect, srt: f.srt, cap_lang: f.cap_lang,

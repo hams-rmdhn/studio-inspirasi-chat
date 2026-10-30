@@ -459,9 +459,15 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
 		'edl_review'    => ! empty( $request->get_param( 'edl_review' ) ) && 'false' !== $request->get_param( 'edl_review' ),
 		'hook_ai'       => ! empty( $request->get_param( 'hook_ai' ) ) && 'false' !== $request->get_param( 'hook_ai' ),
+		'chars_dir'     => wp_normalize_path( (string) $request->get_param( 'chars_dir' ) ),
+		'bgm_file'      => wp_normalize_path( (string) $request->get_param( 'bgm_file' ) ),
+		'bgm_vol'       => max( 0.0, min( 1.0, (float) ( $request->get_param( 'bgm_vol' ) ?: 0.2 ) ) ),
+		'prompt'        => sanitize_textarea_field( (string) $request->get_param( 'prompt' ) ),
+		'transition'    => sanitize_key( (string) $request->get_param( 'transition' ) ) ?: 'fade',
+		'scenes'        => array(),
 		'segments'      => array(),
 	);
-	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly' ), true ) ) {
+	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly', 'cartoon' ), true ) ) {
 		$p['workflow'] = 'clip';
 	}
 	if ( ! in_array( $p['broll_pacing'], array( 'calm', 'dynamic', 'sentence' ), true ) ) {
@@ -503,6 +509,48 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		if ( $s_start >= 0 && $s_end > $s_start ) {
 			$p['segments'][] = array( 'start' => $s_start, 'end' => $s_end );
 		}
+	}
+	// Storyboard cartoon — scenes JSON → sanitasi struktur.
+	$raw_scenes = $request->get_param( 'scenes' );
+	if ( is_string( $raw_scenes ) && '' !== trim( $raw_scenes ) ) {
+		$decoded = json_decode( wp_unslash( $raw_scenes ), true );
+		if ( is_array( $decoded ) ) {
+			$raw_scenes = $decoded;
+		}
+	}
+	foreach ( (array) $raw_scenes as $sc ) {
+		if ( ! is_array( $sc ) ) {
+			continue;
+		}
+		$rows = array();
+		foreach ( (array) ( $sc['rows'] ?? array() ) as $r ) {
+			if ( ! is_array( $r ) ) {
+				continue;
+			}
+			$rows[] = array(
+				'char'    => sanitize_key( (string) ( $r['char'] ?? '' ) ),
+				'action'  => sanitize_key( (string) ( $r['action'] ?? 'diam' ) ),
+				'dur'     => (float) ( $r['dur'] ?? 0 ),
+				'audio'   => wp_normalize_path( (string) ( $r['audio'] ?? '' ) ),
+				'text'    => sanitize_textarea_field( (string) ( $r['text'] ?? '' ) ),
+				'dir'     => sanitize_key( (string) ( $r['dir'] ?? 'kanan' ) ),
+				'x'       => (float) ( $r['x'] ?? 0 ),
+				'x2'      => (float) ( $r['x2'] ?? 0 ),
+				'sfx_id'  => sanitize_key( (string) ( $r['sfx_id'] ?? '' ) ),
+				'broll_id'=> sanitize_key( (string) ( $r['broll_id'] ?? '' ) ),
+			);
+		}
+		if ( ! $rows ) {
+			continue;
+		}
+		$p['scenes'][] = array(
+			'bg'       => wp_normalize_path( (string) ( $sc['bg'] ?? '' ) ),
+			'chars'    => array_map( 'sanitize_key', (array) ( $sc['chars'] ?? array() ) ),
+			'look'     => (array) ( $sc['look'] ?? array() ),
+			'prompt'   => sanitize_textarea_field( (string) ( $sc['prompt'] ?? '' ) ),
+			'rows'     => $rows,
+			'transition_out' => sanitize_key( (string) ( $sc['transition_out'] ?? '' ) ),
+		);
 	}
 	if ( ! $p['segments'] ) {
 		$p['segments'][] = array( 'start' => $p['start'], 'end' => $p['end'] );

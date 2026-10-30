@@ -90,13 +90,14 @@ class CC_Tools {
 			array( 'replace_clip_media', 'Ganti media sebuah clip dengan file baru — clip mempertahankan posisi, trim, dan efeknya. Pakai untuk mengisi clip utama hasil template dengan video baru.', $req( array( 'project' => $path, 'clip' => array( 'type' => 'string', 'description' => 'Id clip dari timeline_read' ), 'file' => $path ), array( 'project', 'clip', 'file' ) ) ),
 			array(
 				'control_run',
-				'Jalankan pipeline produksi otomatis seperti tab Control. Mendukung 3 workflow: '
+				'Jalankan pipeline produksi otomatis seperti tab Control. Mendukung 4 workflow: '
 				. '(1) clip = potong video dari file/YouTube (manual/moments); '
 				. '(2) broll = video utama talking head + sisipan otomatis B-Roll dari broll_dir & SFX dari sfx_dir di atasnya sesuai kalimat; '
-				. '(3) assembly = rakit video penuh dari audio Voice Over (vo_file) + koleksi B-Roll (broll_dir) & SFX (sfx_dir).',
+				. '(3) assembly = rakit video penuh dari audio Voice Over (vo_file) + koleksi B-Roll (broll_dir) & SFX (sfx_dir); '
+				. '(4) cartoon = animasi karakter multi-scene dari storyboard (scenes JSON + chars_dir sprite PNG).',
 				$req(
 					array(
-						'workflow'     => array( 'type' => 'string', 'enum' => array( 'clip', 'broll', 'assembly' ), 'description' => 'clip (default), broll (talking head + B-roll), atau assembly (VO MP3 + B-roll penuh)' ),
+						'workflow'     => array( 'type' => 'string', 'enum' => array( 'clip', 'broll', 'assembly', 'cartoon' ), 'description' => 'clip (default), broll, assembly, atau cartoon (animasi karakter dari storyboard)' ),
 						'file'         => array( 'type' => 'string', 'description' => 'Path file video lokal atau URL YouTube (untuk clip/broll)' ),
 						'vo_file'      => array( 'type' => 'string', 'description' => 'Path file audio Voice Over MP3/WAV (wajib untuk workflow=assembly)' ),
 						'broll_dir'    => array( 'type' => 'string', 'description' => 'Path folder berisi koleksi video B-Roll (wajib untuk workflow=broll/assembly)' ),
@@ -107,6 +108,11 @@ class CC_Tools {
 						'broll_motion_out' => array( 'type' => 'string', 'enum' => array( 'none', 'fade', 'slide', 'pop' ), 'description' => 'Animasi exit B-Roll' ),
 						'edl_review'      => array( 'type' => 'boolean', 'description' => 'Jeda setelah AI menyusun rencana B-Roll agar user bisa mereview/mengedit dulu (default false — langsung rakit)' ),
 						'hook_ai'         => array( 'type' => 'boolean', 'description' => 'Tulis ulang teks hook template dengan AI dari transkrip (hanya bila pakai template)' ),
+						'chars_dir'       => array( 'type' => 'string', 'description' => 'Folder karakter sprite (cartoon) — berisi subfolder per karakter dengan PNG + <nama>.csv' ),
+						'scenes'          => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{bg,chars[],look,prompt,rows[{char,action,dur,audio,text,dir,x,x2}]} — storyboard kartun' ) ),
+						'bgm_file'        => array( 'type' => 'string', 'description' => 'File audio musik latar (cartoon)' ),
+						'bgm_vol'         => array( 'type' => 'number', 'description' => 'Volume BGM 0-1 (default 0.2)' ),
+						'prompt'          => array( 'type' => 'string', 'description' => 'Instruksi AI global untuk cartoon (gaya, tone)' ),
 						'broll_prompt' => array( 'type' => 'string', 'description' => 'Arahan khusus untuk AI Director' ),
 						'template'     => array( 'type' => 'string', 'description' => 'Path template dari template_list — kosong = proyek baru' ),
 						'name'         => array( 'type' => 'string', 'description' => 'Basis nama proyek' ),
@@ -290,6 +296,11 @@ class CC_Tools {
 			'broll_motion_out' => in_array( $args['broll_motion_out'] ?? '', array( 'none', 'fade', 'slide', 'pop' ), true ) ? $args['broll_motion_out'] : 'fade',
 			'edl_review'      => ! empty( $args['edl_review'] ) && 'false' !== $args['edl_review'],
 			'hook_ai'         => ! empty( $args['hook_ai'] ),
+			'chars_dir'       => wp_normalize_path( (string) ( $args['chars_dir'] ?? '' ) ),
+			'bgm_file'        => wp_normalize_path( (string) ( $args['bgm_file'] ?? '' ) ),
+			'bgm_vol'         => (float) ( $args['bgm_vol'] ?? 0.2 ),
+			'prompt'          => sanitize_textarea_field( (string) ( $args['prompt'] ?? '' ) ),
+			'scenes'          => (array) ( $args['scenes'] ?? array() ),
 			'src'            => ! empty( $args['template'] ) ? 'template' : 'baru',
 			'template'       => (string) ( $args['template'] ?? '' ),
 			'template_label' => basename( (string) ( $args['template'] ?? '' ) ),

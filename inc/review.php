@@ -281,6 +281,22 @@ function cc_rest_edl_review( WP_REST_Request $request ) {
 	}
 
 	if ( 'replan' === $action ) {
+		if ( 'cartoon' === (string) ( $rev['seg_plans'][0]['kind'] ?? '' ) && function_exists( 'cc_cartoon_plan_scene' ) ) {
+			$note    = sanitize_textarea_field( (string) $request->get_param( 'note' ) );
+			$cat0    = (array) ( $rev['seg_plans'][0]['catalog'] ?? $rev['catalog'] ?? array() );
+			$np      = array();
+			foreach ( (array) $rev['seg_plans'][0]['scenes'] as $si => $sc ) {
+				$sc['prompt'] = trim( (string) ( $sc['prompt'] ?? '' ) . ' ' . $note );
+				$np[ $si ]    = cc_cartoon_plan_scene( $sc, $cat0['chars'], $cat0['sfx'], $cat0['brolls'], (string) ( $p['prompt'] ?? '' ) );
+			}
+			$rev['seg_plans'][0]['plans'] = $np;
+			$ri = cc_cartoon_review_items( (array) $rev['seg_plans'][0]['scenes'], $np, $cat0['chars'] );
+			$rev['seg_plans'][0]['items'] = $ri['items'];
+			$p['_review'] = $rev;
+			cc_job_update( $job->id, array( 'payload' => wp_json_encode( $p ) ) );
+			cc_edl_review_pause( $job, $job->session_id, $p, $rev['seg_plans'], (array) $rev['catalog'] );
+			return rest_ensure_response( array( 'ok' => true, 'state' => 'pending' ) );
+		}
 		if ( ! function_exists( 'cc_assembly_plan_edl' ) ) {
 			return new WP_Error( 'cc_replan', 'Modul assembly tidak tersedia.', array( 'status' => 500 ) );
 		}
@@ -321,7 +337,13 @@ function cc_rest_edl_review( WP_REST_Request $request ) {
 		$submitted = array();
 	}
 	$approved = array();
+	$is_cartoon = 'cartoon' === (string) ( $rev['seg_plans'][0]['kind'] ?? '' );
 	foreach ( (array) $rev['seg_plans'] as $gi => $plan ) {
+		if ( $is_cartoon ) {
+			// Item kartu hanya preview — plans/scenes dipakai apa adanya.
+			$approved[ $gi ] = $plan;
+			continue;
+		}
 		$seg_items    = isset( $submitted[ $gi ] ) ? (array) $submitted[ $gi ] : array();
 		$plan['items'] = cc_edl_validate_items( $seg_items, (array) $rev['catalog'], (float) ( $plan['dur'] ?? 10 ) );
 		$approved[ $gi ] = $plan;
