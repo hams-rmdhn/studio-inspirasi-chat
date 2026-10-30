@@ -171,15 +171,27 @@ function cc_cartoon_feet( $file ) {
 }
 
 /**
- * Transform karakter: scale = height/vis_h (bagian terlihat PNG setinggi
- * `height` fraksi frame, ruang transparan tak ikut membesar), offsetY agar
- * kaki menjejak $feet_line, offsetX posisi horizontal.
+ * Transform karakter dengan semantik engine yang benar:
+ *   - offset  = fraksi frame DIGESER dari pusat (bukan posisi absolut)
+ *   - scale   = pengali ukuran "fitted" (media di-fit ke frame)
+ *   - fitted_h = fraksi tinggi frame yang ditempati klip sebelum scale
+ * Tinggi terlihat = fitted_h * scale * vis_h = height → kaki menjejak
+ * feet_line lewat offsetY.
  */
-function cc_cartoon_char_tf( $file, $height, $feet_line, $ox ) {
-	$a     = cc_cartoon_norm_anchor( $file );
-	$vis   = max( 0.05, (float) $a['vis_h'] );
-	$scale = min( 4.0, $height / $vis );
-	return array( 'scale' => $scale, 'offsetX' => $ox, 'offsetY' => $feet_line - $scale * ( (float) $a['feet'] - 0.5 ) );
+function cc_cartoon_char_tf( $file, $height, $feet_line, $ox, $ai_frame = 0.5625 ) {
+	$a   = cc_cartoon_norm_anchor( $file );
+	$vis = max( 0.05, (float) $a['vis_h'] );
+	$pr  = function_exists( 'cc_assembly_probe_local' ) ? cc_assembly_probe_local( $file ) : array();
+	$iw  = (float) ( $pr['width'] ?? 0 );
+	$ih  = (float) ( $pr['height'] ?? 0 );
+	$fit = 1.0;
+	if ( $iw > 0 && $ih > 0 ) {
+		$fit = min( 1.0, $ai_frame / ( $iw / $ih ) ); // lebar terpenuhi bila gambar lebih lebar dari frame
+	}
+	$sc      = min( 4.0, $height / ( $fit * $vis ) );
+	$clip_h  = $fit * $sc; // fraksi tinggi klip pasca-scale
+	$oy      = $feet_line - 0.5 - $clip_h * ( (float) $a['feet'] - 0.5 );
+	return array( 'scale' => $sc, 'offsetX' => $ox, 'offsetY' => $oy );
 }
 
 /* ============================ AI PLANNER ============================ */
@@ -357,6 +369,8 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 	$flap_rate_fast = 0.25; $flap_rate_slow = 0.33; $flap_cap = 200;
 	$walk_step      = 0.3;
 	$feet_line      = 0.92; // fraksi tinggi frame — kaki karakter menjejak sini.
+	$ap             = explode( ':', (string) ( $p['aspect'] ?? '9:16' ) );
+	$ai_frame       = isset( $ap[1] ) && (float) $ap[1] > 0 ? (float) $ap[0] / (float) $ap[1] : 0.5625;
 	$imported       = array();
 	$warns          = array();
 	$t              = 0.0;
@@ -499,7 +513,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					if ( ! $imp ) {
 						continue;
 					}
-					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x ) );
+					$add_clip( $trk, $imp, $rt + $k * $seg, $seg, cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ) );
 				}
 				// Audio dialog.
 				if ( 'bicara' === $act && '' !== (string) ( $r['audio'] ?? '' ) && is_file( (string) $r['audio'] ) ) {
@@ -531,7 +545,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					}
 					$st_at = $rt + $k * $seg;
 					$ox    = $pos_x + ( $x1 - $pos_x ) * ( $k / max( 1, $n - 1 ) );
-					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox ) );
+					$add_clip( $trk, $imp, $st_at, $seg, cc_cartoon_char_tf( $spk['file'], $height, $feet_line, $ox, $ai_frame ) );
 					// SFX step sinkron tiap pergantian pose.
 					if ( $step_sfx ) {
 						if ( '' === $sfx_tr ) {
@@ -548,7 +562,7 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 				if ( $spk && ( $imp = $import_file( $spk['file'] ) ) ) {
 					$scale = 'zoom' === $act ? $height * 1.15 : $height;
 					$add_clip( $trk, $imp, $rt, $dur,
-						cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x ),
+						cc_cartoon_char_tf( $spk['file'], $scale, $feet_line, $pos_x, $ai_frame ),
 						array( 'visualMotion' => array( 'entrance' => 'masuk' === $act ? 2 : 0, 'exit' => 'keluar' === $act ? 2 : 0, 'duration' => 0.35 ) ) );
 				}
 			}
