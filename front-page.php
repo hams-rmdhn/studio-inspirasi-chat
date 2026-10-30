@@ -546,14 +546,14 @@ get_header();
 								<span x-text="cn"></span>
 							</label>
 						</template>
-						<input type="text" x-model="ctl.new_char" placeholder="+ karakter" class="cc-input" style="width:8rem" @keydown.enter.prevent="if(ctl.new_char && !ctl.f.scene_chars.includes(ctl.new_char)){ctl.f.scene_chars.push(ctl.new_char); ctl.new_char=''}">
+						<input type="text" x-model="ctl.new_char" placeholder="+ karakter" class="cc-input" style="width:8rem" @keydown.enter.prevent="if(ctl.new_char){if(!ctl.f.scene_chars.includes(ctl.new_char)){ctl.f.scene_chars.push(ctl.new_char)};if(!sc.chars.includes(ctl.new_char)){sc.chars.push(ctl.new_char)};ctl.new_char=''}">
 					</div>
 					<div class="cc-sb-rows">
 						<template x-for="(r, ri) in sc.rows" :key="ri">
 							<div class="cc-sb-row">
 								<span class="cc-note" x-text="ri+1" style="width:1.2rem;text-align:right"></span>
 								<select x-model="r.char" class="cc-input" style="width:7rem">
-									<template x-for="cn in sc.chars" :key="cn"><option :value="cn" x-text="cn"></option></template>
+									<template x-for="cn in (sc.chars.length ? sc.chars : ctl.f.scene_chars)" :key="cn"><option :value="cn" x-text="cn"></option></template>
 								</select>
 								<select x-model="r.action" class="cc-input" style="width:7rem">
 									<option value="bicara">bicara</option><option value="diam">diam</option>
