@@ -326,6 +326,7 @@ function ccChat() {
 				scene_chars: [], new_char: '',
 			},
 			submitting: false, running: false, error: '', sessionId: 0,
+			sb: false,
 		},
 
 		ctlStepLabels() {

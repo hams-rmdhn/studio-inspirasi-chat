@@ -318,6 +318,40 @@ body {
 }
 .cc-modal-lg { max-width: 34rem; }
 
+/* Storyboard Editor — fullscreen overlay */
+.cc-sb {
+	display: flex; flex-direction: column; align-items: stretch;
+	background: var(--cc-bg); padding: 0; z-index: 70;
+}
+.cc-sb-head {
+	display: flex; align-items: center; gap: .8rem;
+	padding: .8rem 1.2rem; border-bottom: 1px solid var(--cc-border);
+	background: var(--cc-panel);
+}
+.cc-sb-head h3 { margin: 0; font-size: 1rem; display: flex; align-items: center; gap: .4rem; flex: 1; }
+.cc-sb-body {
+	flex: 1; overflow-y: auto; padding: 1.2rem;
+	display: flex; flex-direction: column; gap: 1.2rem;
+	max-width: 62rem; margin: 0 auto; width: 100%;
+}
+.cc-sb-scene {
+	border: 1px solid var(--cc-border); border-radius: .8rem;
+	padding: 1rem; background: var(--cc-panel);
+}
+.cc-sb-scene-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: .6rem; }
+.cc-sb-meta { display: flex; gap: .5rem; align-items: center; flex-wrap: wrap; margin-bottom: .5rem; }
+.cc-sb-rows { display: flex; flex-direction: column; gap: .4rem; }
+.cc-sb-row {
+	display: flex; align-items: center; gap: .5rem;
+	padding: .45rem .6rem; border-radius: .5rem;
+	background: color-mix(in srgb, var(--cc-text) 4%, transparent);
+}
+.cc-sb-chip {
+	display: inline-flex; padding: .25rem .6rem; border-radius: 999px;
+	border: 1px solid var(--cc-border); cursor: pointer; user-select: none;
+}
+.cc-sb-chip-on { border-color: var(--cc-accent); color: var(--cc-accent); }
+
 /* Alpine x-transition stage classes land on the overlay — animate the
  * panel inside via descendant selectors (slide-up + slight pop). */
 .cc-ovl.x-transition-enter-start .cc-modal { opacity: 0; transform: translateY(14px) scale(.97); }

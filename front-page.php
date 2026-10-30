@@ -239,69 +239,15 @@ get_header();
 				<div x-show="ctl.step === 2">
 				<h4 class="cc-sec" x-text="ctl.f.workflow === 'cartoon' ? 'Storyboard' : 'Segmen & Arahan AI'"></h4>
 				<template x-if="ctl.f.workflow === 'cartoon'">
-					<div style="display:flex;flex-direction:column;gap:1rem">
-						<template x-for="(sc, si) in ctl.f.scenes" :key="si">
-							<div class="cc-field" style="border:1px solid var(--cc-border,rgba(148,163,184,.25));border-radius:10px;padding:.8rem">
-								<div style="display:flex;align-items:center;justify-content:space-between">
-									<strong x-text="'Scene ' + (si+1)"></strong>
-									<button type="button" @click="ctl.f.scenes.splice(si,1)" x-show="ctl.f.scenes.length>1" class="cc-set" title="Hapus scene"><i data-lucide="x" class="w-4 h-4"></i></button>
-								</div>
-								<div class="cc-filerow" style="margin-top:.5rem">
-									<input type="text" x-model="sc.bg" class="cc-input" placeholder="Latar: /path/gambar.png">
-									<button type="button" @click="ctlBrowseOpen('scene_bg_'+si, 'file')" class="cc-btn">Browse</button>
-								</div>
-								<div class="cc-filerow" style="margin-top:.4rem">
-									<span class="cc-note">Karakter:</span>
-									<template x-for="cn in ctl.f.scene_chars" :key="cn">
-										<label class="cc-note" style="display:flex;gap:.25rem;align-items:center;margin:0">
-											<input type="checkbox" :checked="sc.chars.includes(cn)" @change="sc.chars.includes(cn) ? sc.chars.splice(sc.chars.indexOf(cn),1) : sc.chars.push(cn)" x-text="">
-											<span x-text="cn"></span>
-										</label>
-									</template>
-									<input type="text" x-model="ctl.new_char" placeholder="+ karakter" class="cc-input cc-input-num" style="width:7rem" @keydown.enter.prevent="if(ctl.new_char && !ctl.f.scene_chars.includes(ctl.new_char)){ctl.f.scene_chars.push(ctl.new_char); ctl.new_char=''}">
-								</div>
-								<input type="text" x-model="sc.prompt" class="cc-input" style="margin-top:.4rem" placeholder="Instruksi scene (opsional): suasana kelas pagi…">
-								<div style="margin-top:.5rem;display:flex;flex-direction:column;gap:.35rem">
-									<template x-for="(r, ri) in sc.rows" :key="ri">
-										<div class="cc-segrow" style="flex-wrap:wrap">
-											<select x-model="r.char" class="cc-input" style="width:6rem">
-												<template x-for="cn in sc.chars" :key="cn"><option :value="cn" x-text="cn"></option></template>
-											</select>
-											<select x-model="r.action" class="cc-input" style="width:6.5rem">
-												<option value="bicara">bicara</option><option value="diam">diam</option>
-												<option value="jalan">jalan</option><option value="zoom">zoom</option>
-												<option value="masuk">masuk</option><option value="keluar">keluar</option>
-											</select>
-											<template x-if="r.action === 'bicara'">
-												<span style="display:flex;gap:.3rem;flex:1">
-													<input type="text" x-model="r.audio" class="cc-input" placeholder="audio.mp3" title="File audio dialog">
-													<input type="text" x-model="r.text" class="cc-input" placeholder="teks dialog (caption)" title="Teks caption">
-												</span>
-											</template>
-											<template x-if="r.action === 'jalan'">
-												<span style="display:flex;gap:.3rem;align-items:center">
-													<select x-model="r.dir" class="cc-input" style="width:5rem"><option value="kanan">→ kanan</option><option value="kiri">← kiri</option></select>
-													<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input cc-input-num" title="Durasi (s)"><span class="cc-note">s</span>
-												</span>
-											</template>
-											<template x-if="['diam','masuk','keluar','zoom'].includes(r.action)">
-												<span style="display:flex;gap:.3rem;align-items:center">
-													<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input cc-input-num" title="Durasi (s)"><span class="cc-note">s</span>
-												</span>
-											</template>
-											<button type="button" @click="sc.rows.splice(ri,1)" class="cc-set" title="Hapus baris"><i data-lucide="x" class="w-4 h-4"></i></button>
-										</div>
-									</template>
-								</div>
-								<button type="button" @click="sc.rows.push({char: sc.chars[0]||'', action:'bicara', dur:2, audio:'', text:'', dir:'kanan', x:0, x2:0})" class="cc-btn cc-btn-ghost cc-btn-sm" style="margin-top:.4rem">
-									<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah baris
-								</button>
-							</div>
-						</template>
-						<button type="button" @click="ctl.f.scenes.push({bg:'',chars:[],look:{},prompt:'',rows:[{char:'',action:'bicara',dur:2,audio:'',text:'',dir:'kanan',x:0,x2:0}]})" class="cc-btn cc-btn-ghost">
-							<i data-lucide="plus" class="w-4 h-4"></i> Tambah scene
-						</button>
-						<small class="cc-note">Baris <b>bicara</b>: audio dialog + teks caption — flap mulut otomatis. <b>jalan</b>: pose walk-cycle + gerak + SFX langkah. Karakter dari folder yang dipilih di Langkah 1.</small>
+					<div style="display:flex;flex-direction:column;gap:.8rem">
+						<div class="cc-field" style="text-align:center;padding:1.2rem">
+							<strong x-text="ctl.f.scenes.length + ' scene · ' + ctl.f.scenes.reduce((a,s)=>a+s.rows.length,0) + ' baris aksi'"></strong><br>
+							<small class="cc-note">Storyboard terlalu besar untuk wizard — edit di layar penuh.</small><br>
+							<button type="button" @click="ctl.sb = true" class="cc-btn cc-btn-primary" style="margin-top:.7rem">
+								<i data-lucide="layout-list" class="w-4 h-4"></i> Buka Storyboard Editor
+							</button>
+						</div>
+						<small class="cc-note">Baris <b>bicara</b>: audio dialog + teks caption — flap mulut otomatis. <b>jalan</b>: walk-cycle + SFX langkah.</small>
 					</div>
 				</template>
 				<template x-if="['clip','broll'].includes(ctl.f.workflow)">
@@ -570,6 +516,80 @@ get_header();
 	</div>
 
 	<!-- ============ MODAL: FILE / FOLDER BROWSER ============ -->
+	<!-- Storyboard Editor fullscreen -->
+	<div x-show="ctl.sb" x-cloak class="cc-ovl cc-sb" x-transition.opacity @keydown.escape.window="ctl.sb = false">
+		<div class="cc-sb-head">
+			<h3><i data-lucide="layout-list" class="w-4 h-4"></i> Storyboard Editor</h3>
+			<span class="cc-note" x-text="ctl.f.scenes.length + ' scene · ' + ctl.f.scenes.reduce((a,s)=>a+s.rows.length,0) + ' baris'"></span>
+			<button type="button" @click="ctl.f.scenes.push({bg:'',chars:[],look:{},prompt:'',rows:[{char:'',action:'bicara',dur:2,audio:'',text:'',dir:'kanan',x:0,x2:0}]})" class="cc-btn cc-btn-sm">
+				<i data-lucide="plus" class="w-3.5 h-3.5"></i> Scene
+			</button>
+			<button type="button" @click="ctl.sb = false" class="cc-btn cc-btn-primary cc-btn-sm">Selesai</button>
+		</div>
+		<div class="cc-sb-body">
+			<template x-for="(sc, si) in ctl.f.scenes" :key="si">
+				<div class="cc-sb-scene">
+					<div class="cc-sb-scene-head">
+						<strong x-text="'Scene ' + (si+1)"></strong>
+						<button type="button" @click="ctl.f.scenes.splice(si,1)" x-show="ctl.f.scenes.length>1" class="cc-set" title="Hapus scene"><i data-lucide="x" class="w-4 h-4"></i></button>
+					</div>
+					<div class="cc-sb-meta">
+						<input type="text" x-model="sc.bg" class="cc-input" placeholder="Latar: /path/gambar.png" style="flex:1">
+						<button type="button" @click="ctlBrowseOpen('scene_bg_'+si, 'file')" class="cc-btn cc-btn-sm">Browse</button>
+						<input type="text" x-model="sc.prompt" class="cc-input" placeholder="Instruksi scene (opsional)…" style="flex:1.4">
+					</div>
+					<div class="cc-sb-meta">
+						<span class="cc-note">Karakter:</span>
+						<template x-for="cn in ctl.f.scene_chars" :key="cn">
+							<label class="cc-note cc-sb-chip" :class="sc.chars.includes(cn) && 'cc-sb-chip-on'">
+								<input type="checkbox" :checked="sc.chars.includes(cn)" @change="sc.chars.includes(cn) ? sc.chars.splice(sc.chars.indexOf(cn),1) : sc.chars.push(cn)" style="display:none">
+								<span x-text="cn"></span>
+							</label>
+						</template>
+						<input type="text" x-model="ctl.new_char" placeholder="+ karakter" class="cc-input" style="width:8rem" @keydown.enter.prevent="if(ctl.new_char && !ctl.f.scene_chars.includes(ctl.new_char)){ctl.f.scene_chars.push(ctl.new_char); ctl.new_char=''}">
+					</div>
+					<div class="cc-sb-rows">
+						<template x-for="(r, ri) in sc.rows" :key="ri">
+							<div class="cc-sb-row">
+								<span class="cc-note" x-text="ri+1" style="width:1.2rem;text-align:right"></span>
+								<select x-model="r.char" class="cc-input" style="width:7rem">
+									<template x-for="cn in sc.chars" :key="cn"><option :value="cn" x-text="cn"></option></template>
+								</select>
+								<select x-model="r.action" class="cc-input" style="width:7rem">
+									<option value="bicara">bicara</option><option value="diam">diam</option>
+									<option value="jalan">jalan</option><option value="zoom">zoom</option>
+									<option value="masuk">masuk</option><option value="keluar">keluar</option>
+								</select>
+								<template x-if="r.action === 'bicara'">
+									<span style="display:flex;gap:.4rem;flex:1">
+										<input type="text" x-model="r.audio" class="cc-input" placeholder="audio dialog.mp3" title="File audio dialog" style="flex:1.2">
+										<input type="text" x-model="r.text" class="cc-input" placeholder="teks dialog (caption)" title="Teks caption" style="flex:1">
+									</span>
+								</template>
+								<template x-if="r.action === 'jalan'">
+									<span style="display:flex;gap:.4rem;align-items:center;flex:1">
+										<select x-model="r.dir" class="cc-input" style="width:6rem"><option value="kanan">→ kanan</option><option value="kiri">← kiri</option></select>
+										<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input" style="width:5rem" title="Durasi (s)"><span class="cc-note">s</span>
+									</span>
+								</template>
+								<template x-if="['diam','masuk','keluar','zoom'].includes(r.action)">
+									<span style="display:flex;gap:.4rem;align-items:center;flex:1">
+										<input type="number" x-model.number="r.dur" step="0.5" min="0.5" class="cc-input" style="width:5rem" title="Durasi (s)"><span class="cc-note">detik</span>
+									</span>
+								</template>
+								<button type="button" @click="sc.rows.splice(ri,1)" class="cc-set" title="Hapus baris"><i data-lucide="x" class="w-4 h-4"></i></button>
+							</div>
+						</template>
+					</div>
+					<button type="button" @click="sc.rows.push({char: sc.chars[0]||'', action:'bicara', dur:2, audio:'', text:'', dir:'kanan', x:0, x2:0})" class="cc-btn cc-btn-ghost cc-btn-sm" style="margin-top:.4rem">
+						<i data-lucide="plus" class="w-3.5 h-3.5"></i> Tambah baris
+					</button>
+				</div>
+			</template>
+			<small class="cc-note">Baris <b>bicara</b>: audio + teks caption, flap mulut otomatis. <b>jalan</b>: walk-cycle + SFX langkah sinkron. Karakter dari folder yang dipilih di Langkah 1.</small>
+		</div>
+	</div>
+
 	<div x-show="ctl.browseOpen" x-cloak class="cc-ovl" x-transition.opacity @click.self="ctl.browseOpen = false" @keydown.escape.window="ctl.browseOpen = false">
 		<div class="cc-modal cc-modal-lg">
 			<div class="flex items-center justify-between mb-3">
