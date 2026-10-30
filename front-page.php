@@ -291,6 +291,15 @@ get_header();
 					</div>
 				</template>
 
+				<template x-if="ctl.f.src === 'template'">
+					<div class="cc-field"><span>Adaptasi template</span>
+						<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
+							<input type="checkbox" x-model="ctl.f.hook_ai"> Tulis ulang teks hook dengan AI
+						</label>
+						<small class="cc-note">Overlay template otomatis menyesuaikan durasi segmen — CTA menempel di akhir, frame ikut memanjang/memendek. Hook ditulis ulang dari transkrip (elemen CTA tidak disentuh).</small>
+					</div>
+				</template>
+
 				</div>
 
 				<!-- LANGKAH 4: Proyek & Aksi -->

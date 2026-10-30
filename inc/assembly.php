@@ -908,7 +908,7 @@ function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id, $job = null ) {
 	// 5. Bersihkan clip video placeholder di track utama (bila dari template), pasang VO, lalu susun B-Roll & SFX.
 	$step(
 		'Merakit Voice Over, ' . count( $edl ) . ' klip B-Roll & SFX di timeline',
-		function () use ( $cx, $project, $vo_file, $vo_dur, $edl, $catalog, $p ) {
+		function () use ( $cx, $project, $vo_file, $vo_dur, $edl, $catalog, $p, $srt_txt ) {
 			$g = $cx->call( 'project.get', array( 'path' => $project ), 20 );
 			if ( is_wp_error( $g ) ) {
 				return $g;
@@ -941,6 +941,27 @@ function cc_assembly_run_vo( $cx, &$ctx, $p, $step, $session_id, $job = null ) {
 					),
 					20
 				);
+			}
+
+			// Adaptasi overlay template (CTA/frame/hook) ke durasi VO — SEBELUM
+			// klip VO/B-Roll/SFX dipasang agar tidak ikut terklasifikasi.
+			$tpl_end = 0.0;
+			foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
+				if ( '' !== $active_tl && ( $tl['id'] ?? '' ) !== $active_tl ) {
+					continue;
+				}
+				foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+					$e2 = (float) ( $c['start'] ?? 0 ) + (float) ( $c['duration'] ?? 0 );
+					if ( $e2 > $tpl_end ) {
+						$tpl_end = $e2;
+					}
+				}
+			}
+			if ( ! empty( $p['template'] ) && $tpl_end > 0.5 && function_exists( 'cc_control_adapt_template' ) ) {
+				$ad = cc_control_adapt_template( $cx, $project, $tpl_end, (float) $vo_dur, (string) $srt_txt, ! empty( $p['hook_ai'] ) );
+				if ( is_wp_error( $ad ) ) {
+					return $ad;
+				}
 			}
 
 			// Buat track audio untuk Voice Over & pasang di 0.0s.

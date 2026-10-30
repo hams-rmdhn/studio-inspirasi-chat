@@ -458,6 +458,7 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'broll_motion_out' => sanitize_key( (string) $request->get_param( 'broll_motion_out' ) ),
 		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
 		'edl_review'    => ! empty( $request->get_param( 'edl_review' ) ) && 'false' !== $request->get_param( 'edl_review' ),
+		'hook_ai'       => ! empty( $request->get_param( 'hook_ai' ) ) && 'false' !== $request->get_param( 'hook_ai' ),
 		'segments'      => array(),
 	);
 	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly' ), true ) ) {

@@ -1126,6 +1126,117 @@ function cc_control_run( $job ) {
 }
 
 /**
+ * Adaptasi overlay template ke durasi segmen baru.
+ * Model anchor: full-span (≥80% D) → stretch ke N; end-anchored (≥85% D,
+ * mis. CTA/outro) → geser menempel akhir; start/mid → absolut; elemen di
+ * luar batas → dijepit ke akhir; yang menjulur melewati N dipangkas.
+ * Klip di track isMain & lane captions dilewati. Opsional menulis ulang
+ * teks hook (teks start-anchored ≤15% D) via AI dari transkrip.
+ */
+function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt = '', $hook_ai = false ) {
+	$g = $cx->call( 'project.get', array( 'path' => $project ), 30 );
+	if ( is_wp_error( $g ) ) {
+		return $g;
+	}
+	$main   = '';
+	$cap_tr = array();
+	foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
+		foreach ( (array) ( $tl['tracks'] ?? array() ) as $tr ) {
+			if ( ! empty( $tr['isMain'] ) ) {
+				$main = (string) $tr['id'];
+			}
+			if ( 'captions' === ( $tr['kind'] ?? '' ) ) {
+				$cap_tr[] = (string) $tr['id'];
+			}
+		}
+	}
+	$cmds  = array();
+	$hooks = array();
+	foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
+		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+			$trk = (string) ( $c['trackId'] ?? '' );
+			if ( $trk === $main || in_array( $trk, $cap_tr, true ) ) {
+				continue;
+			}
+			$cid = (string) ( $c['id'] ?? '' );
+			$s   = (float) ( $c['start'] ?? 0 );
+			$d   = (float) ( $c['duration'] ?? 0 );
+			$e   = $s + $d;
+			if ( '' === $cid || $d <= 0 ) {
+				continue;
+			}
+			if ( $s >= $new_dur ) {
+				// Di luar batas → jepit supaya berakhir tepat di N.
+				$ns     = max( 0.0, $new_dur - $d );
+				$cmds[] = array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => $cid, 'trackId' => $trk, 'start' => $ns ) ) );
+				if ( $d > $new_dur ) {
+					$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - ( $ns + $d ) );
+				}
+			} elseif ( $d >= 0.8 * $tpl_dur ) {
+				// Full-span (frame/border/sticker) → stretch supaya e = N.
+				$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $e );
+			} elseif ( $e >= 0.85 * $tpl_dur ) {
+				// End-anchored (CTA/outro) → tempel ke akhir segmen.
+				$cmds[] = array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => $cid, 'trackId' => $trk, 'start' => max( 0.0, $new_dur - $d ) ) ) );
+				if ( $d > $new_dur ) {
+					$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $d );
+				}
+			} elseif ( $e > $new_dur ) {
+				// Start/mid absolut — yang menjulur melewati N dipangkas.
+				$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $e );
+			}
+			// Kandidat hook: teks start-anchored, bukan caption.
+			if ( $hook_ai && 'text' === ( $c['kind'] ?? '' ) && empty( $c['text']['captionGroup'] ) && $s <= 0.15 * $tpl_dur && ! empty( $c['text'] ) ) {
+				$hooks[] = $c;
+			}
+		}
+	}
+	if ( $cmds ) {
+		$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'batch', 'commands' => $cmds ) ), 30 );
+		if ( is_wp_error( $r ) ) {
+			return $r;
+		}
+	}
+	// Rewrite hook AI — hanya teks ≤15% durasi template (CTA tak disentuh).
+	if ( $hook_ai && $hooks && '' !== trim( $srt_txt ) && function_exists( 'cc_ai_configured' ) && cc_ai_configured() ) {
+		$hook = cc_control_hook_text( $srt_txt );
+		if ( '' !== $hook ) {
+			foreach ( $hooks as $c ) {
+				// patch.text mengganti SELURUH TextStyle — ambil style lama,
+				// ubah content saja, kirim balik penuh agar look template utuh.
+				$style            = (array) $c['text'];
+				$style['content'] = $hook;
+				$cx->call(
+					'edit.apply',
+					array(
+						'path'    => $project,
+						'command' => array( 'op' => 'updateClip', 'clipId' => (string) $c['id'], 'patch' => array( 'text' => $style ) ),
+					),
+					20
+				);
+			}
+		}
+	}
+	return true;
+}
+
+/** Satu baris hook (≤8 kata) dari transkrip — '' bila AI gagal. */
+function cc_control_hook_text( $srt_txt ) {
+	$txt = mb_substr( preg_replace( '/\d+:\d+:\d+,\d+\s*-->\s*\d+:\d+:\d+,\d+|\d+\n/', ' ', $srt_txt ), 0, 1500 );
+	$res = CC_AI::chat(
+		array(
+			array( 'role' => 'system', 'content' => 'Tulis SATU baris hook maks 8 kata bahasa Indonesia yang memancing penonton berdasarkan transkrip. Hanya teks, tanpa tanda kutip/emoji/titik akhir.' ),
+			array( 'role' => 'user', 'content' => $txt ),
+		)
+	);
+	if ( is_wp_error( $res ) ) {
+		return '';
+	}
+	$hook = trim( preg_replace( '/["“”*]/', '', strtok( (string) ( $res['message']['content'] ?? '' ), "\n" ) ) );
+	return mb_substr( $hook, 0, 80 );
+}
+
+/**
  * Satu segmen → satu proyek. Pipeline penuh: instantiate/create → media ke
  * timeline → potong segmen → subtitle → save → handoff | export.
  * Returns array{body,meta}; throws CC_Control_Abort pada error/cancel.
@@ -1196,6 +1307,8 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 					if ( is_wp_error( $g ) ) {
 						return $g;
 					}
+					$tpl_end = 0.0;
+					$found   = null;
 					foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
 						if ( ( $tl['id'] ?? '' ) !== ( $g['project']['activeTimelineId'] ?? '' ) ) {
 							continue;
@@ -1207,12 +1320,22 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 							}
 						}
 						foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
-							if ( 'video' === ( $c['kind'] ?? '' ) && ( '' === $main || ( $c['trackId'] ?? '' ) === $main ) ) {
-								return array( 'clip' => $c, 'track' => $c['trackId'] );
+							$end = (float) ( $c['start'] ?? 0 ) + (float) ( $c['duration'] ?? 0 );
+							if ( $end > $tpl_end ) {
+								$tpl_end = $end;
+							}
+							if ( null === $found && 'video' === ( $c['kind'] ?? '' ) && ( '' === $main || ( $c['trackId'] ?? '' ) === $main ) ) {
+								$found = array( 'clip' => $c, 'track' => $c['trackId'] );
 							}
 						}
 					}
-					return new WP_Error( 'cc_clip', 'Tidak menemukan clip video utama di timeline template.' );
+					if ( null === $found ) {
+						return new WP_Error( 'cc_clip', 'Tidak menemukan clip video utama di timeline template.' );
+					}
+					// tpl_end = desain durasi template SEBELUM trim — dipakai
+					// langkah adaptasi overlay untuk menghitung anchor.
+					$found['tpl_end'] = $tpl_end;
+					return $found;
 				}
 			);
 			$step(
@@ -1476,6 +1599,19 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			$srt_txt = $keeps
 				? cc_control_srt_remap( $raw, $keeps )
 				: cc_control_srt_slice( $raw, (float) $p['start'], (float) $p['end'] );
+		}
+
+		/* 4a4. Adaptasi overlay template ke durasi segmen — CTA menempel akhir,
+		 * frame/sticker stretch, elemen luar batas dijepit. Harus SEBELUM 4a3:
+		 * klip B-Roll di track baru tidak boleh ikut terklasifikasi overlay. */
+		if ( ! empty( $p['template'] ) && ! empty( $clip['tpl_end'] ) && function_exists( 'cc_control_adapt_template' ) ) {
+			$step(
+				'Menyesuaikan overlay template',
+				function () use ( $cx, $project, $clip, $p, $srt_txt ) {
+					$span = cc_assembly_timeline_main_span( $cx, $project );
+					return cc_control_adapt_template( $cx, $project, (float) $clip['tpl_end'], (float) $span['duration'], (string) $srt_txt, ! empty( $p['hook_ai'] ) );
+				}
+			);
 		}
 
 		/* 4a3. Mode 'broll' — AI Director menyusun & memasang B-Roll + SFX di atas talking head.
