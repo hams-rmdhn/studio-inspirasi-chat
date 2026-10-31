@@ -1203,14 +1203,14 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 	}
 	$cmds  = array();
 	$hooks = array();
-	$main_vid = '';
+	$main_vid = array();
 	foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
 		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
 			$trk = (string) ( $c['trackId'] ?? '' );
 			// Lewati clip video utama (sudah dipotong ke durasi segmen);
 			// klip non-video di track utama (CTA gambar dsb.) tetap diadaptasi.
 			if ( $trk === $main && 'video' === ( $c['kind'] ?? '' ) ) {
-				$main_vid = (string) ( $c['id'] ?? '' );
+				$main_vid[] = (string) ( $c['id'] ?? '' ); // bisa >1 — silence-cut memecah klip
 				continue;
 			}
 			if ( in_array( $trk, $cap_tr, true ) ) {
@@ -1249,9 +1249,11 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 			}
 		}
 	}
-	if ( '' !== $main_vid ) {
-		// Video utama memenuhi kanvas (size fill) — tanpa ini 16:9 letterbox di 9:16.
-		array_unshift( $cmds, array( 'op' => 'frameClip', 'clipId' => $main_vid, 'framing' => 'fill', 'at' => 0.0 ) );
+	// Video utama memenuhi kanvas (size fill) — tanpa ini letterbox.
+	foreach ( array_reverse( $main_vid ) as $mv ) {
+		if ( '' !== $mv ) {
+			array_unshift( $cmds, array( 'op' => 'frameClip', 'clipId' => $mv, 'framing' => 'fill', 'at' => 0.0 ) );
+		}
 	}
 	if ( $cmds ) {
 		$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'batch', 'commands' => $cmds ) ), 30 );
