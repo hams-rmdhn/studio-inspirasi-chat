@@ -297,10 +297,13 @@ function cc_cartoon_plan_scene( $scene, $chars_cat, $sfx_cat, $broll_cat, $globa
 
 /** SRT timestamp dari detik → "HH:MM:SS,mmm". */
 function cc_cartoon_srt_ts( $t ) {
-	$ms = (int) round( ( $t - floor( $t ) ) * 1000 );
-	$s  = (int) floor( $t ) % 60;
-	$m  = (int) ( floor( $t ) / 60 ) % 60;
-	$h  = (int) ( floor( $t ) / 3600 );
+	$ms = (int) round( max( 0, $t ) * 1000 );
+	$h  = intdiv( $ms, 3600000 );
+	$ms %= 3600000;
+	$m  = intdiv( $ms, 60000 );
+	$ms %= 60000;
+	$s  = intdiv( $ms, 1000 );
+	$ms %= 1000;
 	return sprintf( '%02d:%02d:%02d,%03d', $h, $m, $s, $ms );
 }
 

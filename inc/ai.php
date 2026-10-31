@@ -274,14 +274,13 @@ class CC_AI {
 	}
 
 	private static function srt_time( $sec ) {
-		$sec = max( 0.0, (float) $sec );
-		$h   = (int) floor( $sec / 3600 );
-		$m   = (int) floor( fmod( $sec, 3600 ) / 60 );
-		$s   = (int) floor( fmod( $sec, 60 ) );
-		$ms  = (int) round( ( $sec - floor( $sec ) ) * 1000 );
-		if ( $ms >= 1000 ) {
-			$ms = 999;
-		}
+		$ms  = (int) round( max( 0.0, (float) $sec ) * 1000 );
+		$h   = intdiv( $ms, 3600000 );
+		$ms %= 3600000;
+		$m   = intdiv( $ms, 60000 );
+		$ms %= 60000;
+		$s   = intdiv( $ms, 1000 );
+		$ms %= 1000;
 		return sprintf( '%02d:%02d:%02d,%03d', $h, $m, $s, $ms );
 	}
 }

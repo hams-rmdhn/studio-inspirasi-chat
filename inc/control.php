@@ -202,13 +202,15 @@ function cc_control_srt_ts( $h, $m, $s, $ms ) {
 }
 
 function cc_control_srt_fmt( $t ) {
-	$t   = max( 0, $t );
-	$h   = (int) floor( $t / 3600 );
-	$t  -= $h * 3600;
-	$m   = (int) floor( $t / 60 );
-	$t  -= $m * 60;
-	$s   = (int) floor( $t );
-	$ms  = (int) round( ( $t - $s ) * 1000 );
+	// Bulatkan ke milidetik DULU lalu urai — kalau tidak, frac 0.9999
+	// menghasilkan ms=1000 (timestamp tak valid, parser SRT menolak file).
+	$ms  = (int) round( max( 0, $t ) * 1000 );
+	$h   = intdiv( $ms, 3600000 );
+	$ms %= 3600000;
+	$m   = intdiv( $ms, 60000 );
+	$ms %= 60000;
+	$s   = intdiv( $ms, 1000 );
+	$ms %= 1000;
 	return sprintf( '%02d:%02d:%02d,%03d', $h, $m, $s, $ms );
 }
 
@@ -1823,9 +1825,15 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				),
 				60
 			);
-			$ok = ! is_wp_error( $r );
+			$ok  = ! is_wp_error( $r );
+			$sid = $ok ? (string) ( $r['createdId'] ?? $r['created_id'] ?? '' ) : '';
+			if ( $ok && '' === $sid ) {
+				// Engine no-op diam-diam bila SRT gagal parse — jangan
+				// tandai 'done' palsu.
+				$ok   = false;
+				$warn = ' Catatan: subtitle ditolak engine (SRT tidak valid/kosong).';
+			}
 			if ( $ok ) {
-				$sid  = (string) ( $r['createdId'] ?? $r['created_id'] ?? '' );
 				$lane = (string) ( $st['lane'] ?? '' );
 				if ( '' === $lane ) {
 					// Belum ada lane captions — buat track baru kind:captions.
@@ -1840,7 +1848,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				}
 			}
 			cc_message_update( $tid, array( 'status' => $ok ? 'done' : 'failed', 'meta' => array( 'tool' => 'control', 'status' => $ok ? 'done' : 'failed', 'progress' => 100 ) ) );
-			if ( ! $ok ) {
+			if ( ! $ok && is_wp_error( $r ) ) {
 				$warn = ' Catatan: subtitle gagal ditambahkan (' . $r->get_error_message() . ').';
 			}
 		} else {
