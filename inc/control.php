@@ -239,6 +239,22 @@ function cc_control_snap_segment( $start, $end, $srt_path ) {
 	if ( ! $cues ) {
 		return array( 'start' => $start, 'end' => $end );
 	}
+	// Segmen tanpa ucapan sama sekali (mis. intro/outro yang dipilih AI
+	// keliru) — geser ke tepi ucapan terdekat, durasi dipertahankan.
+	$dur = $end - $start;
+	$hit = false;
+	foreach ( $cues as $c ) {
+		if ( $c['t2'] > $start && $c['t1'] < $end ) {
+			$hit = true;
+			break;
+		}
+	}
+	if ( ! $hit ) {
+		$first = $cues[0];
+		$last  = $cues[ count( $cues ) - 1 ];
+		$ns    = ( $end <= $first['t1'] ) ? $first['t1'] : max( $first['t1'], $last['t2'] - $dur );
+		return array( 'start' => $ns, 'end' => $ns + $dur );
+	}
 	$os = $start;
 	$oe = $end;
 	foreach ( $cues as $c ) {
@@ -1826,6 +1842,16 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 			cc_message_update( $tid, array( 'status' => $ok ? 'done' : 'failed', 'meta' => array( 'tool' => 'control', 'status' => $ok ? 'done' : 'failed', 'progress' => 100 ) ) );
 			if ( ! $ok ) {
 				$warn = ' Catatan: subtitle gagal ditambahkan (' . $r->get_error_message() . ').';
+			}
+		} else {
+			// Tidak ada transkrip untuk segmen ini — caption peninggalan
+			// template (teks video lama) jangan ikut ke proyek baru.
+			$st = cc_control_caption_style( $cx, $project );
+			if ( $st['clips'] ) {
+				$cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'removeClips', 'clipIds' => $st['clips'], 'ripple' => false ) ), 30 );
+			}
+			foreach ( $st['sources'] as $sid ) {
+				$cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'removeCaptionSource', 'sourceId' => $sid ) ), 30 );
 			}
 		}
 
