@@ -1648,7 +1648,26 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 						return new WP_Error( 'cc_sil', 'Tidak ada clip jeda ditemukan setelah split.' );
 					}
 					$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'removeClips', 'clipIds' => $rm, 'ripple' => true ) ), 30 );
-					return is_wp_error( $r ) ? $r : true;
+					if ( is_wp_error( $r ) ) {
+						return $r;
+					}
+					// Safety: klip video utama pertama harus kembali ke $home —
+					// ripple antar-track bisa meninggalkan offset di track ini.
+					$g3 = $cx->call( 'project.get', array( 'path' => $project ), 30 );
+					if ( ! is_wp_error( $g3 ) ) {
+						$first = null;
+						foreach ( (array) ( $g3['project']['timelines'] ?? array() ) as $tl ) {
+							foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+								if ( 'video' === ( $c['kind'] ?? '' ) && ( null === $first || $c['start'] < $first['start'] ) ) {
+									$first = $c;
+								}
+							}
+						}
+						if ( $first && abs( (float) $first['start'] - $home ) > 0.05 ) {
+							$cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => (string) $first['id'], 'trackId' => (string) $first['trackId'], 'start' => $home ) ) ) ), 30 );
+						}
+					}
+					return true;
 				}
 			);
 		}
