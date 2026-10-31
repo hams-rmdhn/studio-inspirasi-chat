@@ -458,9 +458,16 @@ function cc_control_caption_style( $cx, $project ) {
 		}
 	}
 	$lane = '';
+	$text_style = null; // fallback: style dari klip caption bila tak ada captionSource
+	$text_oy    = null;
 	foreach ( (array) ( $pr['timelines'][0]['clips'] ?? array() ) as $c ) {
 		if ( 'text' === ( $c['kind'] ?? '' ) && ! empty( $c['text']['captionGroup'] ) && ! empty( $c['id'] ) ) {
 			$clips[] = (string) $c['id'];
+			if ( null === $text_style && ! empty( $c['text'] ) ) {
+				$text_style = (array) $c['text'];
+				unset( $text_style['content'], $text_style['captionGroup'] );
+				$text_oy = isset( $c['offsetY'] ) ? (float) $c['offsetY'] : null;
+			}
 			if ( '' === $lane && ! empty( $c['trackId'] ) ) {
 				$lane = (string) $c['trackId'];
 			}
@@ -476,8 +483,8 @@ function cc_control_caption_style( $cx, $project ) {
 		}
 	}
 	return array(
-		'style'   => $cs['style'] ?? new stdClass(),
-		'offsetY' => $cs && isset( $cs['offsetY'] ) ? (float) $cs['offsetY'] : 0.32,
+		'style'   => $cs ? ( $cs['style'] ?? new stdClass() ) : ( null !== $text_style ? $text_style : new stdClass() ),
+		'offsetY' => $cs && isset( $cs['offsetY'] ) ? (float) $cs['offsetY'] : ( null !== $text_oy ? $text_oy : 0.32 ),
 		'clips'   => $clips,
 		'sources' => $sources,
 		'lane'    => $lane,
@@ -1196,10 +1203,17 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 	}
 	$cmds  = array();
 	$hooks = array();
+	$main_vid = '';
 	foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
 		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
 			$trk = (string) ( $c['trackId'] ?? '' );
-			if ( $trk === $main || in_array( $trk, $cap_tr, true ) ) {
+			// Lewati clip video utama (sudah dipotong ke durasi segmen);
+			// klip non-video di track utama (CTA gambar dsb.) tetap diadaptasi.
+			if ( $trk === $main && 'video' === ( $c['kind'] ?? '' ) ) {
+				$main_vid = (string) ( $c['id'] ?? '' );
+				continue;
+			}
+			if ( in_array( $trk, $cap_tr, true ) ) {
 				continue;
 			}
 			$cid = (string) ( $c['id'] ?? '' );
@@ -1234,6 +1248,10 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 				$hooks[] = $c;
 			}
 		}
+	}
+	if ( '' !== $main_vid ) {
+		// Video utama memenuhi kanvas (size fill) — tanpa ini 16:9 letterbox di 9:16.
+		array_unshift( $cmds, array( 'op' => 'frameClip', 'clipId' => $main_vid, 'framing' => 'fill', 'at' => 0.0 ) );
 	}
 	if ( $cmds ) {
 		$r = $cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'batch', 'commands' => $cmds ) ), 30 );
