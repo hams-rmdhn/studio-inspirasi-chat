@@ -483,8 +483,11 @@ function cc_control_caption_style( $cx, $project ) {
 		}
 	}
 	return array(
-		'style'   => $cs ? ( $cs['style'] ?? new stdClass() ) : ( null !== $text_style ? $text_style : new stdClass() ),
-		'offsetY' => $cs && isset( $cs['offsetY'] ) ? (float) $cs['offsetY'] : ( null !== $text_oy ? $text_oy : 0.32 ),
+		// Utamakan style + offsetY dari klip caption aktual di timeline
+		// (tempat user mengedit font/weight/maxWidth/stroke/posisi di UI);
+		// captionSources[0] hanya snapshot mentah saat SRT pertama diimpor.
+		'style'   => null !== $text_style ? $text_style : ( $cs ? ( $cs['style'] ?? new stdClass() ) : new stdClass() ),
+		'offsetY' => null !== $text_oy ? $text_oy : ( $cs && isset( $cs['offsetY'] ) ? (float) $cs['offsetY'] : 0.32 ),
 		'clips'   => $clips,
 		'sources' => $sources,
 		'lane'    => $lane,
@@ -1184,7 +1187,7 @@ function cc_control_run( $job ) {
  * Klip di track isMain & lane captions dilewati. Opsional menulis ulang
  * teks hook (teks start-anchored ≤15% D) via AI dari transkrip.
  */
-function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt = '', $hook_ai = false ) {
+function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt = '', $hook_ai = false, $main_tail = array() ) {
 	$g = $cx->call( 'project.get', array( 'path' => $project ), 30 );
 	if ( is_wp_error( $g ) ) {
 		return $g;
@@ -1201,43 +1204,45 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 			}
 		}
 	}
-	$cmds  = array();
-	$hooks = array();
+	$tail_ids = array();
+	foreach ( (array) $main_tail as $mt ) {
+		if ( ! empty( $mt['id'] ) ) {
+			$tail_ids[ (string) $mt['id'] ] = $mt;
+		}
+	}
+	$cmds     = array();
+	$hooks    = array();
 	$main_vid = array();
 	foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
 		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
 			$trk = (string) ( $c['trackId'] ?? '' );
-			// Lewati clip video utama (sudah dipotong ke durasi segmen);
-			// klip non-video di track utama (CTA gambar dsb.) tetap diadaptasi.
-			if ( $trk === $main && 'video' === ( $c['kind'] ?? '' ) ) {
-				$main_vid[] = (string) ( $c['id'] ?? '' ); // bisa >1 — silence-cut memecah klip
-				continue;
-			}
-			if ( in_array( $trk, $cap_tr, true ) ) {
-				continue;
-			}
 			$cid = (string) ( $c['id'] ?? '' );
+			if ( $trk === $main && 'video' === ( $c['kind'] ?? '' ) ) {
+				$main_vid[] = $cid; // bisa >1 — silence-cut memecah klip
+				continue;
+			}
+			if ( isset( $tail_ids[ $cid ] ) || in_array( $trk, $cap_tr, true ) ) {
+				continue;
+			}
 			$s   = (float) ( $c['start'] ?? 0 );
 			$d   = (float) ( $c['duration'] ?? 0 );
 			$e   = $s + $d;
 			if ( '' === $cid || $d <= 0 ) {
 				continue;
 			}
-			if ( $s >= $new_dur ) {
+			if ( $d >= 0.8 * $tpl_dur ) {
+				// Full-span terhadap video utama template (Title/frame/border) → stretch supaya e = N.
+				$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $e );
+			} elseif ( $e >= 0.85 * $tpl_dur ) {
+				// End-anchored (CTA/outro/SFX transisi akhir) → geser mengikuti pergeseran akhir video utama.
+				$ns     = max( 0.0, $s + ( $new_dur - $tpl_dur ) );
+				$cmds[] = array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => $cid, 'trackId' => $trk, 'start' => $ns ) ) );
+			} elseif ( $s >= $new_dur ) {
 				// Di luar batas → jepit supaya berakhir tepat di N.
 				$ns     = max( 0.0, $new_dur - $d );
 				$cmds[] = array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => $cid, 'trackId' => $trk, 'start' => $ns ) ) );
 				if ( $d > $new_dur ) {
 					$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - ( $ns + $d ) );
-				}
-			} elseif ( $d >= 0.8 * $tpl_dur ) {
-				// Full-span (frame/border/sticker) → stretch supaya e = N.
-				$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $e );
-			} elseif ( $e >= 0.85 * $tpl_dur ) {
-				// End-anchored (CTA/outro) → tempel ke akhir segmen.
-				$cmds[] = array( 'op' => 'moveClips', 'moves' => array( array( 'clipId' => $cid, 'trackId' => $trk, 'start' => max( 0.0, $new_dur - $d ) ) ) );
-				if ( $d > $new_dur ) {
-					$cmds[] = array( 'op' => 'trimClip', 'clipId' => $cid, 'edge' => 'end', 'delta' => $new_dur - $d );
 				}
 			} elseif ( $e > $new_dur ) {
 				// Start/mid absolut — yang menjulur melewati N dipangkas.
@@ -1248,6 +1253,20 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 				$hooks[] = $c;
 			}
 		}
+	}
+	// Kembalikan klip outro di track utama (mis. gambar CTA yang diparkir)
+	// tepat setelah akhir video utama baru ($new_dur + gap).
+	foreach ( $tail_ids as $tid => $mt ) {
+		$cmds[] = array(
+			'op'    => 'moveClips',
+			'moves' => array(
+				array(
+					'clipId'  => $tid,
+					'trackId' => (string) $mt['track'],
+					'start'   => max( 0.0, $new_dur + (float) ( $mt['gap'] ?? 0 ) ),
+				),
+			),
+		);
 	}
 	// Video utama memenuhi kanvas (size fill) — tanpa ini letterbox.
 	foreach ( array_reverse( $main_vid ) as $mv ) {
@@ -1268,7 +1287,10 @@ function cc_control_adapt_template( $cx, $project, $tpl_dur, $new_dur, $srt_txt 
 			foreach ( $hooks as $c ) {
 				// patch.text mengganti SELURUH TextStyle — ambil style lama,
 				// ubah content saja, kirim balik penuh agar look template utuh.
-				$style            = (array) $c['text'];
+				$style = (array) $c['text'];
+				if ( empty( $style['maxWidth'] ) && strpos( (string) ( $style['content'] ?? '' ), "\n" ) !== false ) {
+					$style['maxWidth'] = 0.88;
+				}
 				$style['content'] = $hook;
 				$cx->call(
 					'edit.apply',
@@ -1396,9 +1418,35 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 					if ( null === $found ) {
 						return new WP_Error( 'cc_clip', 'Tidak menemukan clip video utama di timeline template.' );
 					}
-					// tpl_end = desain durasi template SEBELUM trim — dipakai
+					$main_end  = (float) ( $found['clip']['start'] ?? 0 ) + (float) ( $found['clip']['duration'] ?? 0 );
+					$main_tail = array();
+					$park_moves = array();
+					foreach ( (array) ( $g['project']['timelines'] ?? array() ) as $tl ) {
+						if ( ( $tl['id'] ?? '' ) !== ( $g['project']['activeTimelineId'] ?? '' ) ) {
+							continue;
+						}
+						foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+							if ( ( $c['trackId'] ?? '' ) !== $found['track'] || ( $c['id'] ?? '' ) === $found['clip']['id'] ) {
+								continue;
+							}
+							$cs = (float) ( $c['start'] ?? 0 );
+							if ( $cs >= $main_end - 0.05 ) {
+								$gap          = max( 0.0, $cs - $main_end );
+								$main_tail[]  = array( 'id' => (string) $c['id'], 'track' => (string) $found['track'], 'gap' => $gap );
+								// Parkir jauh di kanan agar saat video utama dipotong > durasi
+								// template dan dikembalikan ke 0.0, resolve_moves tidak menabrak
+								// CTA outro dan mendorong video utama ke kanan CTA.
+								$park_moves[] = array( 'clipId' => (string) $c['id'], 'trackId' => (string) $found['track'], 'start' => 90000.0 + $gap );
+							}
+						}
+					}
+					if ( $park_moves ) {
+						$cx->call( 'edit.apply', array( 'path' => $project, 'command' => array( 'op' => 'moveClips', 'moves' => $park_moves ) ), 20 );
+					}
+					// tpl_end = akhir video utama template SEBELUM trim — dipakai
 					// langkah adaptasi overlay untuk menghitung anchor.
-					$found['tpl_end'] = $tpl_end;
+					$found['tpl_end']   = $main_end > 0.5 ? $main_end : $tpl_end;
+					$found['main_tail'] = $main_tail;
 					return $found;
 				}
 			);
@@ -1692,7 +1740,7 @@ function cc_control_run_one( $sp, $job, $session_id, $cx, $ctx, $step ) {
 				'Menyesuaikan overlay template',
 				function () use ( $cx, $project, $clip, $p, $srt_txt ) {
 					$span = cc_assembly_timeline_main_span( $cx, $project );
-					return cc_control_adapt_template( $cx, $project, (float) $clip['tpl_end'], (float) $span['duration'], (string) $srt_txt, ! empty( $p['hook_ai'] ) );
+					return cc_control_adapt_template( $cx, $project, (float) $clip['tpl_end'], (float) $span['duration'], (string) $srt_txt, ! empty( $p['hook_ai'] ), (array) ( $clip['main_tail'] ?? array() ) );
 				}
 			);
 		}
