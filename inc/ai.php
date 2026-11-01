@@ -74,7 +74,7 @@ class CC_AI {
 	 * One completions round → array{message,usage} | WP_Error.
 	 * $messages / $tools = wire format OpenAI chat/completions.
 	 */
-	public static function chat( $messages, $tools = null ) {
+	public static function chat( $messages, $tools = null, $opts = array() ) {
 		$key  = cc_ai_key();
 		$prov = cc_ai_providers()[ cc_ai_provider() ];
 		if ( $prov['key'] && '' === $key ) {
@@ -88,7 +88,7 @@ class CC_AI {
 		$body = array(
 			'model'       => cc_ai_model(),
 			'messages'    => $messages,
-			'max_tokens'  => self::MAX_TOKENS,
+			'max_tokens'  => max( 64, (int) ( $opts['max_tokens'] ?? self::MAX_TOKENS ) ),
 			'temperature' => self::TEMPERATURE,
 		);
 		if ( $tools ) {
@@ -283,4 +283,78 @@ class CC_AI {
 		$ms %= 1000;
 		return sprintf( '%02d:%02d:%02d,%03d', $h, $m, $s, $ms );
 	}
+}
+
+/** Parse JSON toleran dari output model — strip fence ```json, ambil objek/array pertama. */
+function cc_ai_json_parse( $raw ) {
+	$raw = trim( (string) $raw );
+	$j   = json_decode( $raw, true );
+	if ( is_array( $j ) ) {
+		return $j;
+	}
+	// Model membungkus dengan ```json ... ``` atau teks di sekitar.
+	if ( preg_match( '/```(?:json)?\s*(.+?)```/s', $raw, $m ) ) {
+		$j = json_decode( trim( $m[1] ), true );
+		if ( is_array( $j ) ) {
+			return $j;
+		}
+	}
+	if ( preg_match( '/(\{.*\}|\[.*\])/s', $raw, $m ) ) {
+		$j = json_decode( $m[0], true );
+		if ( is_array( $j ) ) {
+			return $j;
+		}
+	}
+	return null;
+}
+
+/**
+ * Loop generatif agentik: chat → parse → validasi → repair.
+ * Ronde 0 = call awal; bila parse gagal atau validator menemukan issue,
+ * jawaban mentah + daftar masalah dikirim kembali ke AI untuk diperbaiki.
+ * Maks $opts['rounds'] perbaikan (default 2) — hasil terakhir diterima
+ * apa adanya (fallback deterministik caller tetap jalan sebagai jaring).
+ *
+ * @param array    $msgs     messages ronde awal [{role,content},…]
+ * @param callable $parse    fn(string $raw): array|null
+ * @param callable $validate fn(array $plan): string[] — daftar issue, [] = lolos
+ * @param array    $opts     rounds:int=2, max_tokens:int=4000
+ * @return array{plan:array, issues:string[], rounds:int, ok:bool}
+ */
+function cc_ai_plan_loop( $msgs, $parse, $validate, $opts = array() ) {
+	$rounds    = max( 0, (int) ( $opts['rounds'] ?? 2 ) );
+	$max_tok   = max( 256, (int) ( $opts['max_tokens'] ?? 4000 ) );
+	$chat_opts = array( 'max_tokens' => $max_tok );
+
+	$plan   = array();
+	$issues = array();
+	$used   = 0;
+
+	for ( $r = 0; $r <= $rounds; $r++ ) {
+		$res = CC_AI::chat( $msgs, null, $chat_opts );
+		if ( is_wp_error( $res ) ) {
+			return array( 'plan' => $plan, 'issues' => array( 'AI: ' . $res->get_error_message() ), 'rounds' => $used, 'ok' => false );
+		}
+		$raw  = (string) ( $res['message']['content'] ?? '' );
+		$used = $r;
+		$p    = call_user_func( $parse, $raw );
+		if ( null === $p ) {
+			$issues = array( 'Output bukan JSON valid' );
+			if ( $r < $rounds ) {
+				$msgs[] = array( 'role' => 'assistant', 'content' => $raw );
+				$msgs[] = array( 'role' => 'user', 'content' => "Outputmu bukan JSON valid dan tidak bisa diparse. Kirim ulang HANYA JSON murni sesuai skema — tanpa teks lain, tanpa markdown fence." );
+			}
+			continue;
+		}
+		$plan   = $p;
+		$issues = array_values( array_filter( array_map( 'strval', (array) call_user_func( $validate, $plan ) ) ) );
+		if ( ! $issues ) {
+			return array( 'plan' => $plan, 'issues' => array(), 'rounds' => $used, 'ok' => true );
+		}
+		if ( $r < $rounds ) {
+			$msgs[] = array( 'role' => 'assistant', 'content' => $raw );
+			$msgs[] = array( 'role' => 'user', 'content' => "Validasi gagal — perbaiki SEMUA masalah ini lalu kirim ulang JSON LENGKAP (bukan diff):\n- " . implode( "\n- ", $issues ) );
+		}
+	}
+	return array( 'plan' => $plan, 'issues' => $issues, 'rounds' => $used, 'ok' => ! $issues );
 }

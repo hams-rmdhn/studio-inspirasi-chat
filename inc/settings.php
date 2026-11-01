@@ -101,6 +101,7 @@ function cc_default_prompt() {
 		. '(e) diam/idle = satu klip PNG panjang; kaki karakter menjejak ~0.92 tinggi frame (offsetY = 0.42 - clipH*(feet-0.5), feet≈1). '
 		. 'Jangan pernah menaruh satu PNG panjang lalu "menggeser" — animasi selalu klip pendek beruntun. '
 		. 'Bila user tidak menyebut folder B-Roll/VO, TANYA dulu path foldernya — jangan mengarang path. '
+		. 'Setelah membangun atau mengedit proyek, SELALU panggil timeline_validate untuk memeriksa masalah (teleport, klip melewati media, offscreen) — bila ada issue, perbaiki dengan edit_apply lalu validasi ulang sampai bersih. '
 		. 'Laporkan langkah penting ke user secara singkat di jawaban akhir.';
 }
 

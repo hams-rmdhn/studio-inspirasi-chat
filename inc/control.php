@@ -540,6 +540,50 @@ function cc_control_yt_meta( $id, $url ) {
 }
 
 /** Pilih N segmen momen terbaik → array{start,end,title}[] | WP_Error. */
+/** Validasi pick momen AI vs durasi & cue ucapan — daftar issue, [] = lolos. */
+function cc_control_validate_picks( $j, $meta, $srt_path ) {
+	if ( ! is_array( $j ) || ! $j ) {
+		return array( 'output bukan JSON array' );
+	}
+	$issues = array();
+	$cues   = cc_control_srt_cues( $srt_path );
+	$dur    = (float) ( $meta['duration'] ?? 0 );
+	$prev_e = 0.0;
+	foreach ( $j as $i => $it ) {
+		if ( ! is_array( $it ) ) {
+			continue;
+		}
+		$s = (float) ( $it['start'] ?? -1 );
+		$e = (float) ( $it['end'] ?? -1 );
+		if ( $s < 0 || $e <= $s ) {
+			$issues[] = "pick {$i}: start/end tidak valid";
+			continue;
+		}
+		if ( $dur > 0 && $s >= $dur ) {
+			$issues[] = "pick {$i}: mulai {$s}s melebihi durasi video {$dur}s";
+			continue;
+		}
+		if ( $cues ) {
+			$hit = false;
+			foreach ( $cues as $c ) {
+				if ( $c['t2'] > $s && $c['t1'] < $e ) {
+					$hit = true;
+					break;
+				}
+			}
+			if ( ! $hit ) {
+				$issues[] = "pick {$i}: {$s}-{$e}s tidak mengandung ucapan — pilih rentang yang ada dialognya";
+				continue;
+			}
+		}
+		if ( $s < $prev_e - 0.5 ) {
+			$issues[] = "pick {$i}: overlap dengan pick sebelumnya";
+		}
+		$prev_e = max( $prev_e, $e );
+	}
+	return array_slice( $issues, 0, 8 );
+}
+
 function cc_control_pick_moments( $srt_path, $meta, $count, $min, $max ) {
 	$count = max( 1, min( 10, (int) $count ) );
 	$min   = max( 5, (int) $min );
@@ -606,26 +650,23 @@ function cc_control_pick_moments( $srt_path, $meta, $count, $min, $max ) {
 		),
 	);
 
-	$reply   = '';
 	$api_err = '';
-	if ( function_exists( 'cc_openai_configured' ) && cc_openai_configured() && class_exists( 'CC_OpenAI' ) ) {
-		$res = CC_OpenAI::chat( $msgs );
-		if ( is_wp_error( $res ) ) {
-			$api_err = $res->get_error_message();
-		} else {
-			$reply = (string) ( $res['message']['content'] ?? '' );
-		}
-	}
-	// DEBUG — simpan jawaban mentah AI.
-	file_put_contents( cc_ws_tmp() . 'moments-last.json', $reply );
-	// Parse JSON array dari reply (toleran terhadap teks di sekitarnya).
-	$picks = array();
-	if ( '' !== $reply && preg_match( '/\[.*\]/s', $reply, $jm ) ) {
-		foreach ( (array) json_decode( $jm[0], true ) ?: array() as $it ) {
+	$picks   = array();
+	if ( function_exists( 'cc_ai_configured' ) && cc_ai_configured() ) {
+		$out     = cc_ai_plan_loop(
+			$msgs,
+			function ( $raw ) { return cc_ai_json_parse( $raw ); },
+			function ( $j ) use ( $meta, $srt_path ) { return cc_control_validate_picks( $j, $meta, $srt_path ); },
+			array( 'rounds' => 2, 'max_tokens' => 2000 )
+		);
+		$api_err = $out['ok'] ? '' : implode( '; ', array_slice( (array) $out['issues'], 0, 3 ) );
+		// DEBUG — simpan jawaban hasil loop AI.
+		file_put_contents( cc_ws_tmp() . 'moments-last.json', wp_json_encode( $out['plan'] ) );
+		foreach ( (array) $out['plan'] as $it ) {
 			$s = (float) ( $it['start'] ?? -1 );
 			$e = (float) ( $it['end'] ?? -1 );
 			$t = trim( (string) ( $it['title'] ?? '' ) );
-			if ( $s >= 0 && $e > $s ) {
+			if ( is_array( $it ) && $s >= 0 && $e > $s ) {
 				$picks[] = array( 'start' => $s, 'end' => $e, 'title' => $t );
 			}
 		}

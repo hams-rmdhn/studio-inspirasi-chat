@@ -217,6 +217,55 @@ function cc_assembly_catalog_dir( $dir, $kind = 'broll', $use_vision = false ) {
  * @param array  $opts      {workflow:'broll'|'assembly', pacing:'calm'|'dynamic'|'sentence', prompt:string}.
  * @return array<int,array{broll_id:string,timeline_start:float,duration:float,source_start:float,sfx_id:string,reason:string}>
  */
+/** Validasi EDL AI vs katalog & coverage — daftar issue, [] = lolos. */
+function cc_assembly_validate_edl( $j, $broll_map, $sfx_map, $total_dur, $workflow ) {
+	if ( ! is_array( $j ) || ! $j ) {
+		return array( 'output bukan JSON array / kosong' );
+	}
+	$issues = array();
+	$prev   = 0.0;
+	$cov    = 0.0;
+	foreach ( $j as $i => $it ) {
+		if ( ! is_array( $it ) ) {
+			continue;
+		}
+		$bid = (string) ( $it['broll_id'] ?? '' );
+		if ( ! isset( $broll_map[ $bid ] ) ) {
+			$issues[] = "item {$i}: broll_id '{$bid}' tak dikenal";
+			continue;
+		}
+		$bd = (float) $broll_map[ $bid ]['duration'];
+		$ss = (float) ( $it['source_start'] ?? 0 );
+		$d  = (float) ( $it['duration'] ?? 0 );
+		$ts = (float) ( $it['timeline_start'] ?? 0 );
+		if ( $d <= 0 ) {
+			$issues[] = "item {$i}: duration <= 0";
+			continue;
+		}
+		if ( $ss + $d > $bd + 0.05 ) {
+			$issues[] = "item {$i}: source_start+duration melebihi durasi broll {$bid} ({$bd}s)";
+		}
+		$sid = (string) ( $it['sfx_id'] ?? '' );
+		if ( '' !== $sid && ! isset( $sfx_map[ $sid ] ) ) {
+			$issues[] = "item {$i}: sfx_id '{$sid}' tak dikenal";
+		}
+		if ( 'assembly' === $workflow ) {
+			if ( $ts < $prev - 0.05 ) {
+				$issues[] = "item {$i}: timeline_start {$ts} overlap dengan klip sebelumnya";
+			}
+			if ( $i > 0 && $ts > $prev + 0.5 ) {
+				$issues[] = "item {$i}: celah kosong {$prev}→{$ts}s — rapatkan klip";
+			}
+			$prev = max( $prev, $ts + $d );
+			$cov += $d;
+		}
+	}
+	if ( 'assembly' === $workflow && $cov < $total_dur - 1.0 ) {
+		$issues[] = 'coverage total ' . round( $cov, 1 ) . "s < durasi timeline {$total_dur}s — klip harus menutupi seluruh timeline";
+	}
+	return array_slice( $issues, 0, 10 );
+}
+
 function cc_assembly_plan_edl( $srt_txt, $total_dur, $brolls, $sfxs = array(), $opts = array() ) {
 	$total_dur = max( 1.0, (float) $total_dur );
 	if ( empty( $brolls ) ) {
@@ -295,17 +344,17 @@ function cc_assembly_plan_edl( $srt_txt, $total_dur, $brolls, $sfxs = array(), $
 
 	$cuts = array();
 	if ( cc_ai_configured() ) {
-		$res = CC_AI::chat(
+		$out = cc_ai_plan_loop(
 			array(
 				array( 'role' => 'system', 'content' => $sys ),
 				array( 'role' => 'user', 'content' => $usr ),
-			)
+			),
+			function ( $raw ) { return cc_ai_json_parse( $raw ); },
+			function ( $j ) use ( $broll_map, $sfx_map, $total_dur, $workflow ) { return cc_assembly_validate_edl( $j, $broll_map, $sfx_map, $total_dur, $workflow ); },
+			array( 'rounds' => 2, 'max_tokens' => 4000 )
 		);
-		if ( ! is_wp_error( $res ) ) {
-			$raw = (string) ( $res['message']['content'] ?? '' );
-			if ( preg_match( '/\[.*\]/s', $raw, $m ) ) {
-				$arr = json_decode( $m[0], true );
-				if ( is_array( $arr ) ) {
+			$arr = $out['plan'];
+			if ( is_array( $arr ) ) {
 					foreach ( $arr as $it ) {
 						$bid = (string) ( $it['broll_id'] ?? '' );
 						if ( ! isset( $broll_map[ $bid ] ) ) {
@@ -339,9 +388,7 @@ function cc_assembly_plan_edl( $srt_txt, $total_dur, $brolls, $sfxs = array(), $
 							'reason'         => (string) ( $it['reason'] ?? '' ),
 						);
 					}
-				}
 			}
-		}
 	}
 
 	// Sort & normalisasi anti-overlap / penutup celah.

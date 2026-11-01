@@ -247,6 +247,7 @@ function cc_task_label( $tool, $args ) {
 		'create_project' => 'Membuat proyek "' . ( $args['name'] ?? '' ) . '"',
 		'import_media'   => 'Mengimpor ' . basename( (string) ( $args['file'] ?? 'media' ) ),
 		'timeline_read'  => 'Membaca timeline',
+		'timeline_validate' => 'Memvalidasi timeline',
 		'edit_apply'     => 'Menerapkan ' . count( (array) ( $args['commands'] ?? array() ) ) . ' perintah edit',
 		'export_run'     => 'Merender ' . ( $args['output_name'] ?? 'video' ),
 		'export_status'  => 'Memeriksa status export',

@@ -138,6 +138,7 @@ class CC_Tools {
 			array( 'import_media', 'Impor file media ke proyek. Mengembalikan mediaId (createdId).', $req( array( 'project' => $path, 'file' => $path ), array( 'project', 'file' ) ) ),
 			array( 'timeline_read', 'Baca ringkasan timeline proyek (lanes, clips terurut, media, ids).', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'edit_apply', 'Terapkan satu atau beberapa edit command ke timeline (mis. addClipAtFirstFree, addTextClip). commands = array objek command.', $req( array( 'project' => $path, 'commands' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ), 'description' => 'Array objek {op, ...}' ) ), array( 'project', 'commands' ) ) ),
+			array( 'timeline_validate', 'Validasi timeline proyek — deteksi masalah (teleport posisi, karakter diam, klip melewati akhir media, transform offscreen). Panggil setelah edit/bangun proyek untuk self-check.', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'export_run', 'Render/export proyek ke file video di workspace lalu tunggu sampai selesai. Mengembalikan path file hasil.', $req( array( 'project' => $path, 'output_name' => array( 'type' => 'string', 'description' => 'Nama file hasil, mis. reel.mp4' ) ), array( 'project', 'output_name' ) ) ),
 			array( 'export_status', 'Periksa status sebuah job export.', $req( array( 'job' => array( 'type' => 'string', 'description' => 'Nama job dari export_run' ) ), array( 'job' ) ) ),
 			array( 'copy_result', 'Salin file hasil dari workspace ke folder tujuan yang diizinkan + daftarkan di uploads agar bisa tampil di chat.', $req( array( 'source' => $path, 'dest_dir' => $path ), array( 'source', 'dest_dir' ) ) ),
@@ -180,7 +181,7 @@ class CC_Tools {
 			// Proyek terikat sesi — tool edit tanpa argumen project diisi
 			// otomatis dengan proyek terikat; sistem membukanya sekali per
 			// turn (cache $ctx['_bound']) lalu save+close saat turn selesai.
-			if ( in_array( $name, array( 'timeline_read', 'edit_apply', 'replace_clip_media', 'import_media', 'export_run', 'set_video', 'template_save' ), true ) ) {
+			if ( in_array( $name, array( 'timeline_read', 'edit_apply', 'replace_clip_media', 'import_media', 'export_run', 'set_video', 'template_save', 'timeline_validate' ), true ) ) {
 				$bound = self::bound_path( $ctx, $args );
 				if ( '' !== $bound ) {
 					$args['project'] = $bound;
@@ -275,6 +276,9 @@ class CC_Tools {
 
 				case 'edit_apply':
 					return self::out( self::edit_apply( $ctx, $args['project'] ?? '', $args['commands'] ?? array() ) );
+
+				case 'timeline_validate':
+					return self::out( self::timeline_validate( $ctx, $args['project'] ?? '' ) );
 
 				case 'export_run':
 					return self::out( self::export_run( $ctx, $args['project'] ?? '', $args['output_name'] ?? '' ) );
@@ -508,6 +512,30 @@ class CC_Tools {
 			15
 		);
 		return $res;
+	}
+
+	/** Validasi timeline jadi — issue generik + deteksi koreografi kartun. */
+	private static function timeline_validate( &$ctx, $project ) {
+		$g = self::cx( $ctx )->call( 'project.get', array( 'path' => $project ), 30 );
+		if ( is_wp_error( $g ) ) {
+			return self::err( $g );
+		}
+		$proj   = (array) ( $g['project'] ?? $g );
+		$tl     = $proj['timelines'][0] ?? array();
+		$issues = function_exists( 'cc_cartoon_detect_issues' ) ? cc_cartoon_detect_issues( $proj ) : array();
+		// Generik: klip video melewati akhir media.
+		$med = array();
+		foreach ( (array) ( $proj['media'] ?? array() ) as $m ) {
+			$med[ $m['id'] ] = (float) ( $m['duration'] ?? 0 );
+		}
+		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+			$mid = (string) ( $c['mediaId'] ?? '' );
+			if ( 'video' === ( $c['kind'] ?? '' ) && isset( $med[ $mid ] ) && $med[ $mid ] > 0
+				&& (float) ( $c['sourceStart'] ?? 0 ) + (float) $c['duration'] > $med[ $mid ] + 0.05 ) {
+				$issues[] = $c['id'] . ': melewati akhir media ' . $mid;
+			}
+		}
+		return $issues ? array_values( array_unique( $issues ) ) : 'bersih — tidak ada masalah terdeteksi';
 	}
 
 	private static function edit_apply( &$ctx, $project, $commands ) {
