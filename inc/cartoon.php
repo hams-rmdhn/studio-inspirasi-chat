@@ -54,12 +54,13 @@ function cc_cartoon_catalog_chars( $dir ) {
 					'look'     => trim( (string) ( $row[ $idx['look'] ?? $idx['baju'] ?? -1 ] ?? '' ) ) ?: 'default',
 					'ekspresi' => trim( (string) ( $row[ $idx['ekspresi'] ?? -1 ] ?? '' ) ) ?: 'netral',
 					'varian'   => trim( (string) ( $row[ $idx['varian'] ?? $idx['mouth'] ?? $idx['pose'] ?? -1 ] ?? '' ) ) ?: 'diam',
+					'facing'   => 'kanan' === trim( (string) ( $row[ $idx['facing'] ?? -1 ] ?? '' ) ) ? 'kanan' : 'kiri',
 					'height'   => (float) ( $row[ $idx['height'] ?? -1 ] ?? 0.7 ) ?: 0.7,
 					'desc'     => '',
 				);
 				// kolom sisa → desc semantik untuk AI.
 				foreach ( $idx as $k => $i ) {
-					if ( ! in_array( $k, array( 'no', 'file', 'nama_file', 'look', 'baju', 'ekspresi', 'varian', 'mouth', 'pose', 'height' ), true ) && isset( $row[ $i ] ) ) {
+					if ( ! in_array( $k, array( 'no', 'file', 'nama_file', 'look', 'baju', 'ekspresi', 'varian', 'mouth', 'pose', 'height', 'facing' ), true ) && isset( $row[ $i ] ) ) {
 						$sp['desc'] .= ' ' . trim( (string) $row[ $i ] );
 					}
 				}
@@ -87,7 +88,7 @@ function cc_cartoon_catalog_chars( $dir ) {
 				$var = 'diam';
 			}
 			$w[]        = 'PNG tak tercatat di CSV: ' . $base;
-			$sprites[]  = array( 'file' => $p, 'look' => 'default', 'ekspresi' => 'netral', 'varian' => $var ?: 'diam', 'height' => 0.7, 'desc' => $stem );
+			$sprites[]  = array( 'file' => $p, 'look' => 'default', 'ekspresi' => 'netral', 'varian' => $var ?: 'diam', 'height' => 0.7, 'facing' => 'kiri', 'desc' => $stem );
 		}
 		$chars[ $name ] = array( 'dir' => $cdir, 'sprites' => $sprites, 'warns' => $w );
 		if ( $w ) {
@@ -556,9 +557,11 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 			$height = (float) ( $spr[0]['height'] ?? 0.7 ) ?: 0.7;
 			$pos_x  = (float) ( $r['x'] ?? ( $char_x[ $cn ] ?? 0.0 ) );
 
-			// Karakter menghadap kiri — flip bila harus menghadap kanan:
-			// posisi di sisi kiri (percakapan) atau aksi jalan ke kanan.
-			$flip  = 'jalan' === $act ? 'kanan' === (string) ( $r['dir'] ?? 'kanan' ) : $pos_x < 0;
+			// Flip hanya bila arah yang diinginkan ≠ arah hadap asli sprite
+			// (CSV 'facing': kiri/kanan, default kiri).
+			$face  = (string) ( $spr[0]['facing'] ?? 'kiri' ) ?: 'kiri';
+			$want  = 'jalan' === $act ? (string) ( $r['dir'] ?? 'kanan' ) : ( $pos_x < 0 ? 'kanan' : 'kiri' );
+			$flip  = $want !== $face;
 			$fpat  = $flip ? array( 'flipH' => true ) : null;
 
 			if ( 'bicara' === $act || 'diam' === $act ) {
@@ -598,11 +601,13 @@ function cc_cartoon_generate( $cx, $project, $scenes, $plans, $chars_cat, $sfx_c
 					?: cc_cartoon_pick_sprite( $spr, $look, $expr, 'jalan' )
 					?: cc_cartoon_pick_sprite( $spr, $look, $expr, 'diam' );
 				$p2  = cc_cartoon_pick_sprite( $spr, $look, $expr, 'jalan_' . ( 'kanan' === $dir ? 'kiri' : 'kanan' ) ) ?: $p1;
-				$n   = max( 1, (int) ceil( $dur / $walk_step ) );
-				$seg = $dur / $n;
-				$x1  = (float) ( $r['x2'] ?? -$pos_x ); // default: menyeberang ke sisi lain
+				$x1     = (float) ( $r['x2'] ?? -$pos_x ); // default: menyeberang ke sisi lain
+				// jalan-di-tempat (x≈x2) → satu pose idle, bukan siklus kaki.
+				$still  = abs( $x1 - $pos_x ) < 0.1;
+				$n      = $still ? 1 : max( 1, (int) ceil( $dur / $walk_step ) );
+				$seg    = $dur / $n;
 				for ( $k = 0; $k < $n; $k++ ) {
-					$spk = $k % 2 ? $p2 : $p1;
+					$spk = $still ? ( cc_cartoon_pick_sprite( $spr, $look, $expr, 'diam' ) ?: $p1 ) : ( $k % 2 ? $p2 : $p1 );
 					if ( ! $spk ) {
 						break;
 					}
