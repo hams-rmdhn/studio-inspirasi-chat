@@ -830,10 +830,6 @@ function cc_control_enqueue( $params ) {
 			. ' — B-Roll: ' . basename( (string) ( $params['broll_dir'] ?? '' ) )
 			. ' — segmen: ' . $segs_txt
 			. ' — aksi: ' . $act_txt;
-	} elseif ( 'cartoon' === $wf ) {
-		$summary = 'Mode: Animasi Kartun — karakter: ' . basename( (string) ( $params['chars_dir'] ?? '' ) )
-			. ' — ' . count( (array) ( $params['scenes'] ?? array() ) ) . ' scene'
-			. ' — aksi: ' . $act_txt;
 	} else {
 		$summary = 'Template: ' . ( '' !== $tpl_label ? $tpl_label : '(tanpa template)' )
 			. ' — video: ' . basename( (string) ( $params['file'] ?? '' ) )
@@ -927,41 +923,6 @@ function cc_control_run( $job ) {
 			}
 			$cx->close();
 			return new WP_Error( 'cc_assembly_err', $e->getMessage() );
-		}
-	}
-
-	// Mode 'cartoon' (storyboard multi-scene → animasi karakter) punya jalur sendiri.
-	if ( 'cartoon' === ( $p['workflow'] ?? 'clip' ) && function_exists( 'cc_cartoon_run' ) ) {
-		// Resume review — _scene_plan hasil persetujuan user menggantikan plan AI.
-		if ( ! empty( $p['_edl_resume'] ) && isset( $p['_review']['seg_plans'][0]['plans'] ) ) {
-			$p['_scene_plan'] = (array) $p['_review']['seg_plans'][0]['plans'];
-			// Story mode: scenes hasil materialize ikut dipulihkan agar resume
-			// tidak mengulang pipeline story (AI + STT) dan tetap konsisten
-			// dengan yang direview user.
-			if ( empty( $p['scenes'] ) && isset( $p['_review']['seg_plans'][0]['scenes'] ) ) {
-				$p['scenes'] = (array) $p['_review']['seg_plans'][0]['scenes'];
-			}
-		}
-		try {
-			$res = cc_cartoon_run( $p, $job, $session_id, $cx, $step );
-			$cx->close();
-			return $res;
-		} catch ( CC_Control_Abort $e ) {
-			$cp = cc_control_track_project();
-			if ( '' !== $cp ) {
-				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
-				cc_control_track_project( '' );
-			}
-			$cx->close();
-			return $e->wp_error;
-		} catch ( Throwable $e ) {
-			$cp = cc_control_track_project();
-			if ( '' !== $cp ) {
-				$cx->call( 'project.close', array( 'path' => $cp ), 15 );
-				cc_control_track_project( '' );
-			}
-			$cx->close();
-			return new WP_Error( 'cc_cartoon_err', $e->getMessage() );
 		}
 	}
 

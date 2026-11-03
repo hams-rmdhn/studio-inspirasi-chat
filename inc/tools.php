@@ -90,14 +90,13 @@ class CC_Tools {
 			array( 'replace_clip_media', 'Ganti media sebuah clip dengan file baru — clip mempertahankan posisi, trim, dan efeknya. Pakai untuk mengisi clip utama hasil template dengan video baru.', $req( array( 'project' => $path, 'clip' => array( 'type' => 'string', 'description' => 'Id clip dari timeline_read' ), 'file' => $path ), array( 'project', 'clip', 'file' ) ) ),
 			array(
 				'control_run',
-				'Jalankan pipeline produksi otomatis seperti tab Control. Mendukung 4 workflow: '
+				'Jalankan pipeline produksi otomatis seperti tab Control. Mendukung 3 workflow: '
 				. '(1) clip = potong video dari file/YouTube (manual/moments); '
 				. '(2) broll = video utama talking head + sisipan otomatis B-Roll dari broll_dir & SFX dari sfx_dir di atasnya sesuai kalimat; '
-				. '(3) assembly = rakit video penuh dari audio Voice Over (vo_file) + koleksi B-Roll (broll_dir) & SFX (sfx_dir); '
-				. '(4) cartoon = animasi karakter multi-scene dari storyboard (scenes JSON + chars_dir sprite PNG).',
+				. '(3) assembly = rakit video penuh dari audio Voice Over (vo_file) + koleksi B-Roll (broll_dir) & SFX (sfx_dir).',
 				$req(
 					array(
-						'workflow'     => array( 'type' => 'string', 'enum' => array( 'clip', 'broll', 'assembly', 'cartoon' ), 'description' => 'clip (default), broll, assembly, atau cartoon (animasi karakter dari storyboard)' ),
+						'workflow'     => array( 'type' => 'string', 'enum' => array( 'clip', 'broll', 'assembly' ), 'description' => 'clip (default), broll, atau assembly' ),
 						'file'         => array( 'type' => 'string', 'description' => 'Path file video lokal atau URL YouTube (untuk clip/broll)' ),
 						'vo_file'      => array( 'type' => 'string', 'description' => 'Path file audio Voice Over MP3/WAV (wajib untuk workflow=assembly)' ),
 						'broll_dir'    => array( 'type' => 'string', 'description' => 'Path folder berisi koleksi video B-Roll (wajib untuk workflow=broll/assembly)' ),
@@ -108,13 +107,6 @@ class CC_Tools {
 						'broll_motion_out' => array( 'type' => 'string', 'enum' => array( 'none', 'fade', 'slide', 'pop' ), 'description' => 'Animasi exit B-Roll' ),
 						'edl_review'      => array( 'type' => 'boolean', 'description' => 'Jeda setelah AI menyusun rencana B-Roll agar user bisa mereview/mengedit dulu (default false — langsung rakit)' ),
 						'hook_ai'         => array( 'type' => 'boolean', 'description' => 'Tulis ulang teks hook template dengan AI dari transkrip (hanya bila pakai template)' ),
-						'chars_dir'       => array( 'type' => 'string', 'description' => 'Folder karakter sprite (cartoon) — berisi subfolder per karakter dengan PNG + <nama>.csv' ),
-						'bg_dir'          => array( 'type' => 'string', 'description' => 'Folder gambar latar scene (cartoon) — semua gambar otomatis dikatalogkan' ),
-						'vo_dir'          => array( 'type' => 'string', 'description' => 'Folder audio dialog (cartoon) — file NNN-<char>.mp3: nomor=urutan dialog, nama=karakter' ),
-						'scenes'          => array( 'type' => 'array', 'items' => array( 'type' => 'object', 'description' => '{bg,chars[],look,prompt,rows[{char,action,dur,audio,text,dir,x,x2}]} — storyboard kartun' ) ),
-						'bgm_file'        => array( 'type' => 'string', 'description' => 'File audio musik latar (cartoon)' ),
-						'bgm_vol'         => array( 'type' => 'number', 'description' => 'Volume BGM 0-1 (default 0.2)' ),
-						'prompt'          => array( 'type' => 'string', 'description' => 'Instruksi AI global untuk cartoon (gaya, tone)' ),
 						'broll_prompt' => array( 'type' => 'string', 'description' => 'Arahan khusus untuk AI Director' ),
 						'template'     => array( 'type' => 'string', 'description' => 'Path template dari template_list — kosong = proyek baru' ),
 						'name'         => array( 'type' => 'string', 'description' => 'Basis nama proyek' ),
@@ -138,7 +130,7 @@ class CC_Tools {
 			array( 'import_media', 'Impor file media ke proyek. Mengembalikan mediaId (createdId).', $req( array( 'project' => $path, 'file' => $path ), array( 'project', 'file' ) ) ),
 			array( 'timeline_read', 'Baca ringkasan timeline proyek (lanes, clips terurut, media, ids).', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'edit_apply', 'Terapkan satu atau beberapa edit command ke timeline (mis. addClipAtFirstFree, addTextClip). commands = array objek command.', $req( array( 'project' => $path, 'commands' => array( 'type' => 'array', 'items' => array( 'type' => 'object' ), 'description' => 'Array objek {op, ...}' ) ), array( 'project', 'commands' ) ) ),
-			array( 'timeline_validate', 'Validasi timeline proyek — deteksi masalah (teleport posisi, karakter diam, klip melewati akhir media, transform offscreen). Panggil setelah edit/bangun proyek untuk self-check.', $req( array( 'project' => $path ), array( 'project' ) ) ),
+			array( 'timeline_validate', 'Validasi timeline proyek — deteksi masalah (teleport posisi, klip melewati akhir media, transform offscreen). Panggil setelah edit/bangun proyek untuk self-check.', $req( array( 'project' => $path ), array( 'project' ) ) ),
 			array( 'export_run', 'Render/export proyek ke file video di workspace lalu tunggu sampai selesai. Mengembalikan path file hasil.', $req( array( 'project' => $path, 'output_name' => array( 'type' => 'string', 'description' => 'Nama file hasil, mis. reel.mp4' ) ), array( 'project', 'output_name' ) ) ),
 			array( 'export_status', 'Periksa status sebuah job export.', $req( array( 'job' => array( 'type' => 'string', 'description' => 'Nama job dari export_run' ) ), array( 'job' ) ) ),
 			array( 'copy_result', 'Salin file hasil dari workspace ke folder tujuan yang diizinkan + daftarkan di uploads agar bisa tampil di chat.', $req( array( 'source' => $path, 'dest_dir' => $path ), array( 'source', 'dest_dir' ) ) ),
@@ -375,7 +367,7 @@ class CC_Tools {
 			return new WP_Error( 'cc_ctl', 'Pipeline control tidak tersedia.' );
 		}
 		$wf = sanitize_key( (string) ( $args['workflow'] ?? 'clip' ) );
-		if ( ! in_array( $wf, array( 'clip', 'broll', 'assembly', 'cartoon' ), true ) ) {
+		if ( ! in_array( $wf, array( 'clip', 'broll', 'assembly' ), true ) ) {
 			$wf = 'clip';
 		}
 		$p = array(
@@ -392,13 +384,6 @@ class CC_Tools {
 			'broll_motion_out' => in_array( $args['broll_motion_out'] ?? '', array( 'none', 'fade', 'slide', 'pop' ), true ) ? $args['broll_motion_out'] : 'fade',
 			'edl_review'      => ! empty( $args['edl_review'] ) && 'false' !== $args['edl_review'],
 			'hook_ai'         => ! empty( $args['hook_ai'] ),
-			'chars_dir'       => wp_normalize_path( (string) ( $args['chars_dir'] ?? '' ) ),
-			'bg_dir'          => wp_normalize_path( (string) ( $args['bg_dir'] ?? '' ) ),
-			'vo_dir'          => wp_normalize_path( (string) ( $args['vo_dir'] ?? '' ) ),
-			'bgm_file'        => wp_normalize_path( (string) ( $args['bgm_file'] ?? '' ) ),
-			'bgm_vol'         => (float) ( $args['bgm_vol'] ?? 0.2 ),
-			'prompt'          => sanitize_textarea_field( (string) ( $args['prompt'] ?? '' ) ),
-			'scenes'          => (array) ( $args['scenes'] ?? array() ),
 			'src'            => ! empty( $args['template'] ) ? 'template' : 'baru',
 			'template'       => (string) ( $args['template'] ?? '' ),
 			'template_label' => basename( (string) ( $args['template'] ?? '' ) ),
@@ -514,7 +499,44 @@ class CC_Tools {
 		return $res;
 	}
 
-	/** Validasi timeline jadi — issue generik + deteksi koreografi kartun. */
+	/**
+	 * Deteksi deterministik masalah timeline: transform offscreen, lompatan
+	 * posisi antar klip berurutan (teleport), track panjang tanpa gerak.
+	 */
+	private static function tl_detect_issues( $proj ) {
+		$issues = array();
+		$tl     = $proj['timelines'][0] ?? array();
+		$by_trk = array();
+		foreach ( (array) ( $tl['clips'] ?? array() ) as $c ) {
+			if ( in_array( ( $c['kind'] ?? '' ), array( 'image', 'video' ), true ) && 'T1' !== ( $c['trackId'] ?? '' ) ) {
+				$by_trk[ $c['trackId'] ][] = $c;
+			}
+		}
+		foreach ( $by_trk as $trk => $clips ) {
+			usort( $clips, function ( $a, $b ) { return $a['start'] <=> $b['start']; } );
+			$prev = null;
+			$walk = array();
+			foreach ( $clips as $c ) {
+				$ox = (float) ( $c['offsetX'] ?? 0 );
+				$oy = (float) ( $c['offsetY'] ?? 0 );
+				if ( abs( $ox ) > 0.6 || abs( $oy ) > 0.55 ) {
+					$issues[] = "{$c['id']}: transform offscreen (ox={$ox}, oy={$oy})";
+				}
+				if ( null !== $prev && abs( $ox - (float) ( $prev['offsetX'] ?? 0 ) ) > 0.4 ) {
+					$issues[] = "track {$trk}: posisi lompat " . round( $prev['offsetX'] ?? 0, 2 ) . "→{$ox} di {$c['id']} (teleport)";
+				}
+				$walk[] = $ox;
+				$prev   = $c;
+			}
+			// Track panjang tanpa gerak: banyak klip berurutan dengan ox identik.
+			if ( count( array_unique( array_map( function ( $x ) { return round( $x, 2 ); }, $walk ) ) ) <= 1 && count( $clips ) >= 6 ) {
+				$issues[] = "track {$trk}: " . count( $clips ) . ' klip tapi posisi identik — track diam total?';
+			}
+		}
+		return array_slice( $issues, 0, 15 );
+	}
+
+	/** Validasi timeline jadi — issue generik + deteksi posisi/transform. */
 	private static function timeline_validate( &$ctx, $project ) {
 		$g = self::cx( $ctx )->call( 'project.get', array( 'path' => $project ), 30 );
 		if ( is_wp_error( $g ) ) {
@@ -522,7 +544,7 @@ class CC_Tools {
 		}
 		$proj   = (array) ( $g['project'] ?? $g );
 		$tl     = $proj['timelines'][0] ?? array();
-		$issues = function_exists( 'cc_cartoon_detect_issues' ) ? cc_cartoon_detect_issues( $proj ) : array();
+		$issues = self::tl_detect_issues( $proj );
 		// Generik: klip video melewati akhir media.
 		$med = array();
 		foreach ( (array) ( $proj['media'] ?? array() ) as $m ) {

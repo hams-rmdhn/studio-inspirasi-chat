@@ -103,11 +103,10 @@ get_header();
 						<option value="clip">Potong Video (Clipper — 1 video jadi klip pendek)</option>
 						<option value="broll">Talking Head + Auto B-Roll & SFX (AI)</option>
 						<option value="assembly">Rakit Penuh dari Voice Over + B-Roll & SFX (AI)</option>
-						<option value="cartoon">Animasi Kartun (storyboard + sprite karakter)</option>
 					</select>
 				</label>
 
-				<div class="cc-field" x-show="ctl.f.workflow !== 'cartoon'"><span>Sumber komposisi</span>
+				<div class="cc-field"><span>Sumber komposisi</span>
 					<div class="cc-tabs">
 						<button type="button" @click="ctl.f.src = 'template'" :class="ctl.f.src === 'template' && 'cc-tab-on'" class="cc-tab">Dari template</button>
 						<button type="button" @click="ctl.f.src = 'baru'" :class="ctl.f.src === 'baru' && 'cc-tab-on'" class="cc-tab">Proyek baru</button>
@@ -125,7 +124,7 @@ get_header();
 					<small class="cc-note">Ukuran, frame, & gaya subtitle mengikuti template.</small>
 				</label>
 
-				<label class="cc-field" x-show="ctl.f.src === 'baru' || ctl.f.workflow === 'cartoon'"><span>Aspect ratio</span>
+				<label class="cc-field" x-show="ctl.f.src === 'baru'"><span>Aspect ratio</span>
 					<select x-model="ctl.f.aspect" class="cc-input">
 						<option value="9:16">9:16 — vertikal (1080×1920)</option>
 						<option value="16:9">16:9 — landscape (1920×1080)</option>
@@ -134,17 +133,7 @@ get_header();
 					</select>
 				</label>
 
-				<label class="cc-field" x-show="ctl.f.workflow === 'cartoon'" x-cloak>
-					<span>Folder karakter (sprite PNG + CSV)</span>
-					<div class="cc-filerow">
-						<input type="text" x-model="ctl.f.chars_dir" class="cc-input" placeholder="/Users/.../characters — berisi subfolder per karakter" @change="ctlScanFolder('chars_dir')">
-						<button type="button" @click="ctlBrowseOpen('chars_dir', 'dir')" class="cc-btn">Pilih Folder</button>
-					</div>
-					<small class="cc-note">Tiap subfolder = satu karakter; isi PNG + <code>&lt;nama&gt;.csv</code> (file,look,ekspresi,varian,height).</small>
-					<small class="cc-note" x-show="ctl.scan.chars_dir" x-cloak x-text="ctl.scan.chars_dir"></small>
-				</label>
-
-				<label class="cc-field" x-show="ctl.f.workflow !== 'assembly' && ctl.f.workflow !== 'cartoon'">
+				<label class="cc-field" x-show="ctl.f.workflow !== 'assembly'">
 					<span x-text="ctl.f.workflow === 'broll' ? 'Video utama (Talking Head)' : 'File video'"></span>
 					<div class="cc-filerow">
 						<input type="text" x-model="ctl.f.file" @input="ctlSuggestName()" class="cc-input" placeholder="/path/ke/video.mp4 atau URL YouTube">
@@ -194,51 +183,6 @@ get_header();
 					</div>
 				</template>
 
-				<template x-if="ctl.f.workflow === 'cartoon'">
-					<div style="display:flex;flex-direction:column;gap:1rem">
-						<label class="cc-field"><span>Folder gambar latar scene</span>
-							<div class="cc-filerow">
-								<input type="text" x-model="ctl.f.bg_dir" class="cc-input" placeholder="/Users/.../backgrounds — png/jpg, AI memilih per scene" @change="ctlScanFolder('bg_dir')">
-								<button type="button" @click="ctlBrowseOpen('bg_dir', 'dir')" class="cc-btn">Pilih Folder</button>
-							</div>
-							<small class="cc-note" x-show="ctl.scan.bg_dir" x-cloak x-text="ctl.scan.bg_dir"></small>
-						</label>
-						<label class="cc-field"><span>Folder audio dialog / VO</span>
-							<div class="cc-filerow">
-								<input type="text" x-model="ctl.f.vo_dir" class="cc-input" placeholder="/Users/.../vo — file NNN-karakter.mp3 (001-budi, 002-sofi, …)" @change="ctlScanFolder('vo_dir')">
-								<button type="button" @click="ctlBrowseOpen('vo_dir', 'dir')" class="cc-btn">Pilih Folder</button>
-							</div>
-							<small class="cc-note">Nomor file = urutan dialog, nama = karakter — caption diambil dari naskah di prompt.</small>
-							<small class="cc-note" x-show="ctl.scan.vo_dir" x-cloak x-text="ctl.scan.vo_dir"></small>
-						</label>
-						<label class="cc-field"><span>Musik latar / BGM <em class="cc-tag">opsional</em></span>
-							<div class="cc-filerow">
-								<input type="text" x-model="ctl.f.bgm_file" class="cc-input" placeholder="/path/ke/bgm.mp3">
-								<button type="button" @click="ctlBrowseOpen('bgm_file', 'file')" class="cc-btn">Browse</button>
-								<input type="number" x-model.number="ctl.f.bgm_vol" step="0.05" min="0" max="1" class="cc-input cc-input-num" title="Volume BGM (0-1)">
-							</div>
-							<small class="cc-note">Dipasang di track audio paling bawah sepanjang video.</small>
-						</label>
-						<label class="cc-field"><span>Transisi antar scene</span>
-							<select x-model="ctl.f.transition" class="cc-input">
-								<option value="fade">Fade</option>
-								<option value="slide">Slide</option>
-								<option value="pop">Pop</option>
-								<option value="none">Cut (langsung)</option>
-							</select>
-						</label>
-						<label class="cc-field"><span>Naskah & instruksi AI <em class="cc-tag">wajib</em></span>
-							<textarea x-model="ctl.f.prompt" class="cc-input" rows="6" placeholder="Ceritakan video yang mau dibangun + naskah dialog per baris. Contoh:&#10;&#10;Budi: &quot;Aku ikut dong!&quot;&#10;Sofi: &quot;Boleh, ayo kita mulai!&quot;&#10;&#10;File VO harus sesuai urutan: 001-budi.mp3, 002-sofi.mp3"></textarea>
-							<small class="cc-note">Format dialog: <code>Nama: "teks"</code> per baris — dipasangkan ke file <code>NNN-nama.mp3</code> di folder VO.</small>
-						</label>
-						<label class="cc-check"><input type="checkbox" x-model="ctl.f.edl_review">
-							<span><strong>Review rencana koreografi sebelum dirakit</strong><br>
-							<small class="cc-note">Pipeline berjeda setelah AI memilih look/sfx tiap baris — Anda bisa meninjau lalu melanjutkan. Matikan untuk langsung rakit.</small></span>
-						</label>
-					</div>
-				</template>
-
-				<template x-if="ctl.f.workflow !== 'cartoon'">
 				<div>
 				<label class="cc-field"><span>Caption & transkrip bahasa</span>
 					<select x-model="ctl.f.cap_lang" class="cc-input">
@@ -256,18 +200,12 @@ get_header();
 					<small class="cc-note">Kosongkan untuk memakai subtitle YouTube atau transkrip Whisper otomatis.</small>
 				</label>
 				</div>
-				</template>
 
 				</div>
 
 				<!-- LANGKAH 3: Segmen, Potong & Arahan AI -->
 				<div x-show="ctl.step === 2">
-				<h4 class="cc-sec" x-text="ctl.f.workflow === 'cartoon' ? 'Storyboard' : 'Segmen & Arahan AI'"></h4>
-				<template x-if="ctl.f.workflow === 'cartoon'">
-					<div class="cc-field"><span>Storyboard otomatis</span>
-						<small class="cc-note">AI menyusun scene & koreografi dari naskah di prompt + seluruh file di folder aset. Tinjau rencana di kartu review sebelum dirakit.</small>
-					</div>
-				</template>
+				<h4 class="cc-sec">Segmen & Arahan AI</h4>
 				<template x-if="['clip','broll'].includes(ctl.f.workflow)">
 					<div style="display:flex;flex-direction:column;gap:1rem">
 						<div class="cc-field"><span>Segmen <em class="cc-tag">1 segmen = 1 proyek</em></span>
@@ -359,7 +297,7 @@ get_header();
 					</div>
 				</template>
 
-				<template x-if="ctl.f.src === 'template' && ctl.f.workflow !== 'cartoon'">
+				<template x-if="ctl.f.src === 'template'">
 					<div class="cc-field"><span>Adaptasi template</span>
 						<label class="cc-note" style="display:flex;align-items:center;gap:.4rem;margin-top:0">
 							<input type="checkbox" x-model="ctl.f.hook_ai"> Tulis ulang teks hook dengan AI

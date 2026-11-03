@@ -461,17 +461,9 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		'broll_prompt'  => sanitize_textarea_field( (string) $request->get_param( 'broll_prompt' ) ),
 		'edl_review'    => ! empty( $request->get_param( 'edl_review' ) ) && 'false' !== $request->get_param( 'edl_review' ),
 		'hook_ai'       => ! empty( $request->get_param( 'hook_ai' ) ) && 'false' !== $request->get_param( 'hook_ai' ),
-		'chars_dir'     => wp_normalize_path( (string) $request->get_param( 'chars_dir' ) ),
-		'bg_dir'        => wp_normalize_path( (string) $request->get_param( 'bg_dir' ) ),
-		'vo_dir'        => wp_normalize_path( (string) $request->get_param( 'vo_dir' ) ),
-		'bgm_file'      => wp_normalize_path( (string) $request->get_param( 'bgm_file' ) ),
-		'bgm_vol'       => max( 0.0, min( 1.0, (float) ( $request->get_param( 'bgm_vol' ) ?: 0.2 ) ) ),
-		'prompt'        => sanitize_textarea_field( (string) $request->get_param( 'prompt' ) ),
-		'transition'    => sanitize_key( (string) $request->get_param( 'transition' ) ) ?: 'fade',
-		'scenes'        => array(),
 		'segments'      => array(),
 	);
-	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly', 'cartoon' ), true ) ) {
+	if ( ! in_array( $p['workflow'], array( 'clip', 'broll', 'assembly' ), true ) ) {
 		$p['workflow'] = 'clip';
 	}
 	if ( ! in_array( $p['broll_pacing'], array( 'calm', 'dynamic', 'sentence' ), true ) ) {
@@ -514,49 +506,6 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 			$p['segments'][] = array( 'start' => $s_start, 'end' => $s_end );
 		}
 	}
-	// Storyboard cartoon — scenes JSON → sanitasi struktur.
-	$raw_scenes = $request->get_param( 'scenes' );
-	if ( is_string( $raw_scenes ) && '' !== trim( $raw_scenes ) ) {
-		$decoded = json_decode( wp_unslash( $raw_scenes ), true );
-		if ( is_array( $decoded ) ) {
-			$raw_scenes = $decoded;
-		}
-	}
-	foreach ( (array) $raw_scenes as $sc ) {
-		if ( ! is_array( $sc ) ) {
-			continue;
-		}
-		$rows = array();
-		foreach ( (array) ( $sc['rows'] ?? array() ) as $r ) {
-			if ( ! is_array( $r ) ) {
-				continue;
-			}
-			$rows[] = array(
-				'char'    => sanitize_key( (string) ( $r['char'] ?? '' ) ),
-				'action'  => sanitize_key( (string) ( $r['action'] ?? 'diam' ) ),
-				'dur'     => (float) ( $r['dur'] ?? 0 ),
-				'audio'   => wp_normalize_path( (string) ( $r['audio'] ?? '' ) ),
-				'text'    => sanitize_textarea_field( (string) ( $r['text'] ?? '' ) ),
-				'dir'     => sanitize_key( (string) ( $r['dir'] ?? 'kanan' ) ),
-				'x'       => (float) ( $r['x'] ?? 0 ),
-				'x2'      => (float) ( $r['x2'] ?? 0 ),
-				'sfx_id'  => sanitize_key( (string) ( $r['sfx_id'] ?? '' ) ),
-				'broll_id'=> sanitize_key( (string) ( $r['broll_id'] ?? '' ) ),
-				'par'     => ! empty( $r['par'] ),
-			);
-		}
-		if ( ! $rows ) {
-			continue;
-		}
-		$p['scenes'][] = array(
-			'bg'       => wp_normalize_path( (string) ( $sc['bg'] ?? '' ) ),
-			'chars'    => array_map( 'sanitize_key', (array) ( $sc['chars'] ?? array() ) ),
-			'look'     => (array) ( $sc['look'] ?? array() ),
-			'prompt'   => sanitize_textarea_field( (string) ( $sc['prompt'] ?? '' ) ),
-			'rows'     => $rows,
-			'transition_out' => sanitize_key( (string) ( $sc['transition_out'] ?? '' ) ),
-		);
-	}
 	if ( ! $p['segments'] ) {
 		$p['segments'][] = array( 'start' => $p['start'], 'end' => $p['end'] );
 	}
@@ -591,36 +540,6 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 		if ( ! CC_Tools::read_allowed( $p['vo_file'] ) ) {
 			return new WP_Error( 'cc_path', 'File Voice Over di luar folder yang diizinkan.', array( 'status' => 400 ) );
 		}
-	} elseif ( 'cartoon' === $p['workflow'] ) {
-		// Cartoon tidak memakai file video — bahan = folder karakter + aset + naskah.
-		if ( '' === $p['chars_dir'] || ! is_dir( $p['chars_dir'] ) ) {
-			return new WP_Error( 'cc_chars', 'Folder karakter tidak ditemukan: ' . $p['chars_dir'], array( 'status' => 400 ) );
-		}
-		if ( ! CC_Tools::read_allowed( $p['chars_dir'] ) ) {
-			return new WP_Error( 'cc_path', 'Folder karakter di luar folder yang diizinkan.', array( 'status' => 400 ) );
-		}
-		if ( '' === trim( $p['prompt'] ) && ! $p['scenes'] ) {
-			return new WP_Error( 'cc_prompt', 'Naskah & instruksi AI wajib diisi — AI menyusun storyboard dari sini.', array( 'status' => 400 ) );
-		}
-		foreach ( array( 'sfx_dir', 'broll_dir', 'bg_dir', 'vo_dir' ) as $df ) {
-			if ( '' !== $p[ $df ] && ( ! is_dir( $p[ $df ] ) || ! CC_Tools::read_allowed( $p[ $df ] ) ) ) {
-				return new WP_Error( 'cc_path', 'Folder ' . $df . ' tidak ditemukan atau di luar folder yang diizinkan.', array( 'status' => 400 ) );
-			}
-		}
-		if ( '' !== $p['bgm_file'] && ( ! file_exists( $p['bgm_file'] ) || ! CC_Tools::read_allowed( $p['bgm_file'] ) ) ) {
-			return new WP_Error( 'cc_bgm', 'File BGM tidak ditemukan atau di luar folder yang diizinkan.', array( 'status' => 400 ) );
-		}
-		// Path per-scene/per-baris ikut dijaga — sama pola whitelist read.
-		foreach ( $p['scenes'] as $sc ) {
-			if ( '' !== (string) ( $sc['bg'] ?? '' ) && ! CC_Tools::read_allowed( (string) $sc['bg'] ) ) {
-				return new WP_Error( 'cc_path', 'File latar scene di luar folder yang diizinkan.', array( 'status' => 400 ) );
-			}
-			foreach ( (array) ( $sc['rows'] ?? array() ) as $rw ) {
-				if ( '' !== (string) ( $rw['audio'] ?? '' ) && ! CC_Tools::read_allowed( (string) $rw['audio'] ) ) {
-					return new WP_Error( 'cc_path', 'File audio dialog di luar folder yang diizinkan.', array( 'status' => 400 ) );
-				}
-			}
-		}
 	} elseif ( cc_control_is_yt( $p['file'] ) ) {
 		// URL YouTube — file di-resolve saat worker (download ke inbox).
 	} elseif ( '' === $p['file'] || ! file_exists( $p['file'] ) ) {
@@ -650,7 +569,7 @@ function cc_rest_control_run( WP_REST_Request $request ) {
 			return new WP_Error( 'cc_srt', 'Subtitle harus berupa file .srt.', array( 'status' => 400 ) );
 		}
 	}
-	if ( ! in_array( $p['workflow'], array( 'assembly', 'cartoon' ), true ) && ( $p['start'] < 0 || $p['end'] <= $p['start'] ) ) {
+	if ( 'assembly' !== $p['workflow'] && ( $p['start'] < 0 || $p['end'] <= $p['start'] ) ) {
 		return new WP_Error( 'cc_segment', 'Segmen tidak valid — selesai harus lebih besar dari mulai.', array( 'status' => 400 ) );
 	}
 	if ( '' !== $p['dest_dir'] && ! CC_Tools::write_allowed_dir( $p['dest_dir'] ) ) {
